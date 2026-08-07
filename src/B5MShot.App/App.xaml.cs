@@ -16,6 +16,7 @@ public partial class App : System.Windows.Application
     private readonly CaptureService _captureService = new();
     private readonly GlobalHotKey _hotKeys = new();
     private readonly UpdateService _updateService = new();
+    private readonly AutoStartService _autoStartService = new();
     private UploadService _uploadService = null!;
     private Forms.NotifyIcon? _trayIcon;
     private Icon? _trayAppIcon;
@@ -43,7 +44,7 @@ public partial class App : System.Windows.Application
         {
             _settingsService.Load();
             _uploadService = new UploadService();
-            MainAppWindow = new MainWindow(_settingsService);
+            MainAppWindow = new MainWindow(_settingsService, _autoStartService);
             MainWindow = MainAppWindow;
             _hotKeys.Initialize(MainAppWindow);
             ApplyHotKeys();

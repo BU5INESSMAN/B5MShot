@@ -15,6 +15,8 @@ if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var publicUri) 
 settings.Validate();
 var storagePath = Path.GetFullPath(settings.StoragePath);
 var downloadPath = Path.GetFullPath(settings.DownloadPath);
+var logoPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "logo.png");
+var socialPreviewPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "og.png");
 Directory.CreateDirectory(storagePath);
 
 var requestBodyLimit = checked(settings.MaxUploadBytes + 1024 * 1024);
@@ -42,13 +44,47 @@ builder.Services.AddRateLimiter(options =>
 var app = builder.Build();
 app.UseRateLimiter();
 
-app.MapGet("/", () => Results.Json(new
+app.MapGet("/", (HttpContext context) =>
+{
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+    return Results.Content(LandingPage.Html, "text/html; charset=utf-8");
+});
+
+app.MapGet("/api/info", () => Results.Json(new
 {
     service = "B5MShot",
     status = "ready",
     upload = "/api/screenshots",
     retention = "adaptive"
 }));
+
+app.MapMethods("/assets/logo.png", [HttpMethods.Get, HttpMethods.Head], (HttpContext context) =>
+{
+    if (!File.Exists(logoPath))
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=86400";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(logoPath, "image/png", lastModified: File.GetLastWriteTimeUtc(logoPath), enableRangeProcessing: true);
+});
+
+app.MapMethods("/assets/og.png", [HttpMethods.Get, HttpMethods.Head], (HttpContext context) =>
+{
+    if (!File.Exists(socialPreviewPath))
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=86400";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(socialPreviewPath, "image/png", lastModified: File.GetLastWriteTimeUtc(socialPreviewPath), enableRangeProcessing: true);
+});
+
+app.MapGet("/robots.txt", () => Results.Text("User-agent: *\nAllow: /\n", "text/plain"));
 
 app.MapGet("/health", (StorageManager storage) =>
 {

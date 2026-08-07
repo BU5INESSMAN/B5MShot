@@ -495,9 +495,24 @@ public partial class PreviewWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Z && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Control)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Z)
         {
             Undo();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.S)
+        {
+            SaveButton_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.C)
+        {
+            CopyButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
     }

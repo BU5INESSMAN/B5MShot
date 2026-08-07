@@ -11,15 +11,17 @@ namespace B5MShot.App;
 public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService;
+    private readonly AutoStartService _autoStartService;
     private HotKeyGesture _areaGesture = HotKeyGesture.Disabled;
     private HotKeyGesture _fullscreenGesture = HotKeyGesture.Disabled;
     private HotKeyTarget _captureTarget;
 
-    public MainWindow(SettingsService settingsService)
+    public MainWindow(SettingsService settingsService, AutoStartService autoStartService)
     {
         InitializeComponent();
         _settingsService = settingsService;
-        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.4.0"}";
+        _autoStartService = autoStartService;
+        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.4.1"}";
         RefreshFromSettings();
     }
 
@@ -27,6 +29,7 @@ public partial class MainWindow : Window
     {
         _areaGesture = HotKeyGesture.Parse(_settingsService.Current.AreaCaptureHotKey);
         _fullscreenGesture = HotKeyGesture.Parse(_settingsService.Current.FullscreenCaptureHotKey);
+        StartWithWindowsCheckBox.IsChecked = _autoStartService.IsEnabled();
         RefreshHotKeyLabels();
     }
 
@@ -131,10 +134,13 @@ public partial class MainWindow : Window
 
         try
         {
+            var startWithWindows = StartWithWindowsCheckBox.IsChecked == true;
+            _autoStartService.SetEnabled(startWithWindows);
             _settingsService.Save(new AppSettings
             {
                 AreaCaptureHotKey = _areaGesture.StorageValue,
-                FullscreenCaptureHotKey = _fullscreenGesture.StorageValue
+                FullscreenCaptureHotKey = _fullscreenGesture.StorageValue,
+                StartWithWindows = startWithWindows
             });
             var error = ((App)System.Windows.Application.Current).ApplyHotKeys();
             SetStatus(error ?? "Настройки сохранены", error is not null);

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Редактор — B5MShot" Icon="/Assets/logo.png" Width="1100" Height="760"
         MinWidth="760" MinHeight="560" WindowStartupLocation="CenterScreen" Background="{StaticResource BackgroundBrush}"
-        KeyDown="Window_KeyDown">
+        PreviewKeyDown="Window_KeyDown">
     <Window.Resources>
         <Style x:Key="ToolButton" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="White" />
@@ -105,8 +105,8 @@
                 <TextBlock x:Name="LinkText" Visibility="Collapsed" Foreground="#A998FF" Cursor="Hand" Margin="0,3,0,0" MouseLeftButtonUp="LinkText_MouseLeftButtonUp" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button Content="Сохранить" Margin="0,0,7,0" Click="SaveButton_Click" />
-                <Button Content="Копировать" Margin="0,0,7,0" Click="CopyButton_Click" />
+                <Button Content="Сохранить  Ctrl+S" Margin="0,0,7,0" Click="SaveButton_Click" />
+                <Button Content="Копировать  Ctrl+C" Margin="0,0,7,0" Click="CopyButton_Click" />
                 <Button x:Name="UploadButton" Style="{StaticResource PrimaryButton}" Content="Загрузить" Click="UploadButton_Click" />
             </StackPanel>
         </Grid>
