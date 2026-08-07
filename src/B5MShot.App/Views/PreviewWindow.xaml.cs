@@ -399,19 +399,31 @@ public partial class PreviewWindow : Window
 
     private void CopyButton_Click(object sender, RoutedEventArgs e)
     {
+        CopyImage();
+    }
+
+    private bool CopyImage()
+    {
         try
         {
             ClipboardService.SetImage(RenderFinalImage());
             StatusText.Text = "Изображение с правками скопировано";
+            return true;
         }
         catch (Exception exception)
         {
             ErrorLogService.Write(exception, "Copying screenshot");
             StatusText.Text = "Буфер обмена занят. Попробуйте ещё раз.";
+            return false;
         }
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        SaveImage();
+    }
+
+    private bool SaveImage()
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
@@ -422,7 +434,7 @@ public partial class PreviewWindow : Window
 
         if (dialog.ShowDialog(this) != true)
         {
-            return;
+            return false;
         }
 
         try
@@ -432,11 +444,13 @@ public partial class PreviewWindow : Window
             using var stream = File.Create(dialog.FileName);
             encoder.Save(stream);
             StatusText.Text = "Снимок с правками сохранён";
+            return true;
         }
         catch (Exception exception)
         {
             ErrorLogService.Write(exception, "Saving screenshot");
             StatusText.Text = "Не удалось сохранить файл. Проверьте доступ к папке.";
+            return false;
         }
     }
 
@@ -507,12 +521,18 @@ public partial class PreviewWindow : Window
         }
         else if (e.Key == Key.S)
         {
-            SaveButton_Click(this, new RoutedEventArgs());
+            if (SaveImage())
+            {
+                Close();
+            }
             e.Handled = true;
         }
         else if (e.Key == Key.C)
         {
-            CopyButton_Click(this, new RoutedEventArgs());
+            if (CopyImage())
+            {
+                Close();
+            }
             e.Handled = true;
         }
     }
