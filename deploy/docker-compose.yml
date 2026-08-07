@@ -7,6 +7,7 @@ services:
     environment:
       B5MShot__PublicBaseUrl: https://s.bu5inessman.ru
       B5MShot__StoragePath: /data/screenshots
+      B5MShot__DownloadPath: /data/downloads/B5MShot.exe
       B5MShot__MaxUploadBytes: 15728640
       B5MShot__MaxStorageBytes: 75161927680
       B5MShot__CleanupTargetBytes: 69793218560
@@ -16,6 +17,7 @@ services:
       B5MShot__MaxConcurrentUploads: 4
     volumes:
       - ./data/screenshots:/data/screenshots
+      - ./downloads:/data/downloads:ro
     networks:
       - media
     security_opt:
