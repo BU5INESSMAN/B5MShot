@@ -1,0 +1,21 @@
+services:
+  b5mshot-server:
+    build:
+      context: ../src/B5MShot.Server
+    container_name: b5mshot-server
+    restart: unless-stopped
+    environment:
+      B5MShot__PublicBaseUrl: https://s.bu5inessman.ru
+      B5MShot__StoragePath: /data/screenshots
+      B5MShot__MaxUploadBytes: 15728640
+    volumes:
+      - ./data/screenshots:/data/screenshots
+    networks:
+      - media
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  media:
+    external: true
+    name: media-stack_media

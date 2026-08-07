@@ -1,0 +1,116 @@
+<Window x:Class="B5MShot.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="B5MShot" Icon="/Assets/logo.png"
+        Width="430" Height="650"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="Manual" Topmost="True"
+        AllowsTransparency="True" Background="Transparent"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Grid Margin="14">
+        <Border Background="{StaticResource ShellGradientBrush}" BorderBrush="#46536B" BorderThickness="1" CornerRadius="24" Padding="22">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="30" ShadowDepth="8" Opacity="0.42" Color="#080A10" />
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="52" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="44" Height="44" CornerRadius="13" Background="#34405A" BorderBrush="#52617E" BorderThickness="1">
+                        <Image Source="/Assets/logo.png" Width="34" Height="34" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <TextBlock Text="B5MShot" Foreground="White" FontSize="21" FontWeight="Bold" />
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <Ellipse Width="7" Height="7" Fill="#5CD39B" VerticalAlignment="Center" />
+                            <TextBlock Text="Работает в фоне" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="×" Width="34" Height="34" Padding="0" FontSize="19" Background="#30394C" ToolTip="Скрыть в трей" Click="CloseButton_Click" />
+                </Grid>
+
+                <Button Grid.Row="1" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,22,0,10" Padding="17,16" Click="CaptureButton_Click">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="42" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="34" Height="34" CornerRadius="9" Background="#25FFFFFF">
+                            <TextBlock Text="⌗" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,0,0">
+                            <TextBlock Text="Выделить область" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="Сразу открыть редактор" Foreground="#D8E5FF" FontSize="12" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Background="#2B152F5E" CornerRadius="7" Padding="9,5" VerticalAlignment="Center">
+                            <TextBlock x:Name="AreaShortcutText" Text="Print Screen" FontSize="11" Foreground="White" />
+                        </Border>
+                    </Grid>
+                </Button>
+
+                <Button Grid.Row="2" HorizontalAlignment="Stretch" Padding="14,11" Click="CaptureFullscreenButton_Click">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Снимок всего экрана" VerticalAlignment="Center" Margin="0,0,18,0" />
+                        <TextBlock Grid.Column="1" x:Name="FullscreenShortcutText" Text="Ctrl + Print Screen" Foreground="{StaticResource MutedTextBrush}" FontSize="11" VerticalAlignment="Center" />
+                    </Grid>
+                </Button>
+
+                <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="Горячие клавиши" Foreground="White" FontWeight="SemiBold" FontSize="15" />
+                            <TextBlock Text="любые сочетания" HorizontalAlignment="Right" Foreground="#91A0B9" FontSize="11" />
+                        </Grid>
+                        <TextBlock Text="Выделение области" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,12,0,5" />
+                        <Button x:Name="AreaHotKeyButton" HorizontalContentAlignment="Left" Height="38" Padding="12,7" Click="AreaHotKeyButton_Click" />
+                        <TextBlock Text="Весь экран" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,10,0,5" />
+                        <Button x:Name="FullscreenHotKeyButton" HorizontalContentAlignment="Left" Height="38" Padding="12,7" Click="FullscreenHotKeyButton_Click" />
+                        <TextBlock Text="Нажмите поле, затем нужное сочетание. Delete — отключить." Foreground="#8390A8" FontSize="10.5" Margin="1,9,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Margin="0,12,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="UpdateButton" Content="Проверить обновления" Padding="9,9" FontSize="12" Click="UpdateButton_Click" />
+                        <Button Grid.Column="2" Content="Сообщить об ошибке" Padding="9,9" FontSize="12" Click="ReportBugButton_Click" />
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="6" Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="2,0,12,0">
+                        <TextBlock x:Name="StatusText" Text="Готов к снимку" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="VersionText" Text="Версия 0.4.0" Foreground="#748097" FontSize="10" Margin="0,3,0,0" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="Сохранить" Padding="18,10" Click="SaveButton_Click" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

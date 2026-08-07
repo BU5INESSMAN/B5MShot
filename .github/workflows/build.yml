@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet restore B5MShot.sln
+      - run: dotnet build B5MShot.sln -c Release --no-restore
+      - run: dotnet publish src/B5MShot.App/B5MShot.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B5MShot-win-x64
+          path: release/B5MShot.exe

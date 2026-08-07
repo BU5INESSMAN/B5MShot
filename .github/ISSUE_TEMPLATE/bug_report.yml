@@ -1,0 +1,36 @@
+name: Сообщить об ошибке
+description: Опишите проблему в B5MShot
+title: "[Ошибка]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Перед публикацией удалите из сообщения личные данные. Для быстрой связи можно написать в Telegram — https://t.me/BU5INESSMAN
+  - type: input
+    id: version
+    attributes:
+      label: Версия B5MShot
+      placeholder: 0.4.0
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что произошло?
+      description: Опишите ожидаемое и фактическое поведение.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить ошибку?
+      placeholder: |
+        1. Нажать…
+        2. Выбрать…
+        3. Появляется…
+  - type: textarea
+    id: log
+    attributes:
+      label: Журнал ошибок
+      description: При необходимости приложите содержимое %LOCALAPPDATA%\B5MShot\logs\errors.log, предварительно проверив его.
+      render: text
