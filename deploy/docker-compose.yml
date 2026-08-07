@@ -8,12 +8,20 @@ services:
       B5MShot__PublicBaseUrl: https://s.bu5inessman.ru
       B5MShot__StoragePath: /data/screenshots
       B5MShot__MaxUploadBytes: 15728640
+      B5MShot__MaxStorageBytes: 75161927680
+      B5MShot__CleanupTargetBytes: 69793218560
+      B5MShot__MinFreeDiskBytes: 21474836480
+      B5MShot__CleanupTargetFreeDiskBytes: 26843545600
+      B5MShot__CleanupIntervalMinutes: 30
+      B5MShot__MaxConcurrentUploads: 4
     volumes:
       - ./data/screenshots:/data/screenshots
     networks:
       - media
     security_opt:
       - no-new-privileges:true
+    mem_limit: 384m
+    pids_limit: 100
 
 networks:
   media:

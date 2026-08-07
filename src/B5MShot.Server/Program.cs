@@ -12,11 +12,18 @@ if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var publicUri) 
     throw new InvalidOperationException("B5MShot__PublicBaseUrl must be a valid HTTPS URL.");
 }
 
+settings.Validate();
 var storagePath = Path.GetFullPath(settings.StoragePath);
 Directory.CreateDirectory(storagePath);
 
-builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = settings.MaxUploadBytes);
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = settings.MaxUploadBytes);
+var requestBodyLimit = checked(settings.MaxUploadBytes + 1024 * 1024);
+builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = requestBodyLimit);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = requestBodyLimit);
+builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton(new StorageManagerOptions(storagePath));
+builder.Services.AddSingleton<StorageManager>();
+builder.Services.AddSingleton<UploadGate>();
+builder.Services.AddHostedService<StorageCleanupService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -38,63 +45,112 @@ app.MapGet("/", () => Results.Json(new
 {
     service = "B5MShot",
     status = "ready",
-    upload = "/api/screenshots"
+    upload = "/api/screenshots",
+    retention = "adaptive"
 }));
 
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapGet("/health", (StorageManager storage) =>
+{
+    var status = storage.GetStatus();
+    return Results.Ok(new
+    {
+        status = "healthy",
+        storageBytes = status.KnownStorageBytes,
+        freeDiskBytes = status.FreeDiskBytes,
+        maxStorageBytes = settings.MaxStorageBytes,
+        minFreeDiskBytes = settings.MinFreeDiskBytes
+    });
+});
 
-app.MapPost("/api/screenshots", async (HttpRequest request, CancellationToken cancellationToken) =>
+app.MapPost("/api/screenshots", async (HttpRequest request, StorageManager storage, UploadGate uploadGate, CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType)
     {
         return Results.BadRequest(new { error = "multipart_form_required" });
     }
 
-    var form = await request.ReadFormAsync(cancellationToken);
-    var file = form.Files.GetFile("file");
-    if (file is null || file.Length == 0)
+    if (!uploadGate.TryEnter())
     {
-        return Results.BadRequest(new { error = "file_required" });
+        return Results.Json(new { error = "server_busy_try_again" }, statusCode: StatusCodes.Status429TooManyRequests);
     }
 
-    if (file.Length > settings.MaxUploadBytes)
+    try
     {
-        return Results.Json(new { error = "file_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
+        var form = await request.ReadFormAsync(cancellationToken);
+        var file = form.Files.GetFile("file");
+        if (file is null || file.Length == 0)
+        {
+            return Results.BadRequest(new { error = "file_required" });
+        }
+
+        if (file.Length > settings.MaxUploadBytes)
+        {
+            return Results.Json(new { error = "file_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+
+        if (!await storage.EnsureCapacityAsync(file.Length, cancellationToken))
+        {
+            return Results.Json(new { error = "storage_temporarily_full" }, statusCode: 507);
+        }
+
+        await using var input = file.OpenReadStream();
+        var header = new byte[8];
+        var bytesRead = await input.ReadAsync(header, cancellationToken);
+        input.Position = 0;
+
+        var imageType = DetectImageType(header.AsSpan(0, bytesRead));
+        if (imageType is null)
+        {
+            return Results.BadRequest(new { error = "png_or_jpeg_required" });
+        }
+
+        var storedFile = storage.CreateFile(imageType.Extension);
+        try
+        {
+            await using (var output = new FileStream(
+                storedFile.TemporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await input.CopyToAsync(output, cancellationToken);
+                await output.FlushAsync(cancellationToken);
+            }
+
+            File.Move(storedFile.TemporaryPath, storedFile.FinalPath);
+            storage.RecordStored(file.Length);
+        }
+        catch
+        {
+            if (File.Exists(storedFile.TemporaryPath))
+            {
+                File.Delete(storedFile.TemporaryPath);
+            }
+            throw;
+        }
+
+        var url = $"{settings.PublicBaseUrl.TrimEnd('/')}/i/{storedFile.Id}";
+        return Results.Ok(new { id = storedFile.Id, url });
     }
-
-    await using var input = file.OpenReadStream();
-    var header = new byte[8];
-    var bytesRead = await input.ReadAsync(header, cancellationToken);
-    input.Position = 0;
-
-    var imageType = DetectImageType(header.AsSpan(0, bytesRead));
-    if (imageType is null)
+    finally
     {
-        return Results.BadRequest(new { error = "png_or_jpeg_required" });
+        uploadGate.Exit();
     }
-
-    var id = Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
-    var filePath = Path.Combine(storagePath, $"{id}.{imageType.Extension}");
-    await using (var output = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
-    {
-        await input.CopyToAsync(output, cancellationToken);
-    }
-
-    var url = $"{settings.PublicBaseUrl.TrimEnd('/')}/i/{id}";
-    return Results.Ok(new { id, url });
 }).RequireRateLimiting("uploads");
 
-app.MapGet("/i/{id}", (string id, HttpContext context) =>
+app.MapGet("/i/{id}", (string id, HttpContext context, StorageManager storage) =>
 {
-    if (!Regex.IsMatch(id, "^[a-f0-9]{12}$", RegexOptions.CultureInvariant))
+    if (!Regex.IsMatch(id, "^(?:[a-f0-9]{12}|[a-f0-9]{24})$", RegexOptions.CultureInvariant))
     {
         return Results.NotFound();
     }
 
     foreach (var imageType in ImageTypes.All)
     {
-        var filePath = Path.Combine(storagePath, $"{id}.{imageType.Extension}");
-        if (!File.Exists(filePath))
+        var filePath = storage.FindFile(id, imageType.Extension);
+        if (filePath is null)
         {
             continue;
         }
@@ -127,6 +183,43 @@ public sealed class ShotSettings
     public string PublicBaseUrl { get; init; } = "https://s.bu5inessman.ru";
     public string StoragePath { get; init; } = "/data/screenshots";
     public long MaxUploadBytes { get; init; } = 15 * 1024 * 1024;
+    public long MaxStorageBytes { get; init; } = 70L * 1024 * 1024 * 1024;
+    public long CleanupTargetBytes { get; init; } = 65L * 1024 * 1024 * 1024;
+    public long MinFreeDiskBytes { get; init; } = 20L * 1024 * 1024 * 1024;
+    public long CleanupTargetFreeDiskBytes { get; init; } = 25L * 1024 * 1024 * 1024;
+    public int CleanupIntervalMinutes { get; init; } = 30;
+    public int MaxConcurrentUploads { get; init; } = 4;
+
+    public void Validate()
+    {
+        if (MaxUploadBytes <= 0 || MaxStorageBytes <= 0 || CleanupTargetBytes <= 0 || CleanupTargetBytes >= MaxStorageBytes)
+        {
+            throw new InvalidOperationException("B5MShot storage size limits are invalid.");
+        }
+        if (MinFreeDiskBytes <= 0 || CleanupTargetFreeDiskBytes <= MinFreeDiskBytes)
+        {
+            throw new InvalidOperationException("B5MShot free disk limits are invalid.");
+        }
+        if (CleanupIntervalMinutes is < 5 or > 1440)
+        {
+            throw new InvalidOperationException("B5MShot cleanup interval must be between 5 and 1440 minutes.");
+        }
+        if (MaxConcurrentUploads is < 1 or > 32)
+        {
+            throw new InvalidOperationException("B5MShot concurrent upload limit must be between 1 and 32.");
+        }
+    }
+}
+
+public sealed class UploadGate
+{
+    private readonly SemaphoreSlim _slots;
+
+    public UploadGate(ShotSettings settings) => _slots = new SemaphoreSlim(settings.MaxConcurrentUploads, settings.MaxConcurrentUploads);
+
+    public bool TryEnter() => _slots.Wait(0);
+
+    public void Exit() => _slots.Release();
 }
 
 public sealed record ImageType(string Extension, string ContentType);

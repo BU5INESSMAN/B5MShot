@@ -2,9 +2,8 @@ s.bu5inessman.ru {
     encode gzip zstd
 
     request_body {
-        max_size 15MB
+        max_size 16MB
     }
 
     reverse_proxy b5mshot-server:8080
 }
-
