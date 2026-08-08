@@ -45,7 +45,7 @@ public partial class App : System.Windows.Application
                 _uploadService = new UploadService();
                 Dispatcher.BeginInvoke(async () =>
                 {
-                    await UploadImageFileAsync(uploadPath);
+                    await OpenImageFileInEditorAsync(uploadPath);
                     Shutdown();
                 }, DispatcherPriority.ApplicationIdle);
                 return;
@@ -74,7 +74,7 @@ public partial class App : System.Windows.Application
 
             if (uploadPath is not null)
             {
-                Dispatcher.BeginInvoke(async () => await UploadImageFileAsync(uploadPath), DispatcherPriority.ApplicationIdle);
+                Dispatcher.BeginInvoke(async () => await OpenImageFileInEditorAsync(uploadPath), DispatcherPriority.ApplicationIdle);
             }
 
             Dispatcher.BeginInvoke(async () =>
@@ -156,7 +156,7 @@ public partial class App : System.Windows.Application
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Выберите изображение для загрузки в B5MShot",
+            Title = "Выберите изображение для редактирования в B5MShot",
             Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|Все файлы|*.*",
             CheckFileExists = true,
             Multiselect = false
@@ -164,7 +164,7 @@ public partial class App : System.Windows.Application
 
         if (dialog.ShowDialog() == true)
         {
-            await UploadImageFileAsync(dialog.FileName);
+            await OpenImageFileInEditorAsync(dialog.FileName);
         }
     }
 
@@ -259,7 +259,7 @@ public partial class App : System.Windows.Application
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Выделить область", null, (_, _) => Dispatcher.Invoke(BeginCaptureArea));
         menu.Items.Add("Весь экран", null, (_, _) => Dispatcher.Invoke(BeginCaptureFullscreen));
-        menu.Items.Add("Загрузить изображение…", null, (_, _) => Dispatcher.Invoke(async () => await ChooseAndUploadImageAsync()));
+        menu.Items.Add("Открыть изображение…", null, (_, _) => Dispatcher.Invoke(async () => await ChooseAndUploadImageAsync()));
         menu.Items.Add("Настройки", null, (_, _) => Dispatcher.Invoke(ShowSettings));
         menu.Items.Add("Проверить обновления", null, (_, _) => Dispatcher.Invoke(async () => await CheckForUpdatesAsync(true)));
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -285,7 +285,7 @@ public partial class App : System.Windows.Application
         };
     }
 
-    private async Task UploadImageFileAsync(string filePath)
+    private async Task OpenImageFileInEditorAsync(string filePath)
     {
         try
         {
@@ -316,19 +316,18 @@ public partial class App : System.Windows.Application
                 throw new InvalidOperationException("Изображение имеет неподдерживаемый размер.");
             }
 
-            var result = await _uploadService.UploadAsync(image);
-            ClipboardService.SetText(result.Url);
-            System.Windows.MessageBox.Show(
-                $"Изображение загружено. Ссылка скопирована в буфер обмена.\n\n{result.Url}",
-                "B5MShot",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            var editorClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var editor = new PreviewWindow(image, _uploadService);
+            editor.Closed += (_, _) => editorClosed.TrySetResult();
+            editor.Show();
+            editor.Activate();
+            await editorClosed.Task;
         }
         catch (Exception exception)
         {
-            ErrorLogService.Write(exception, $"Uploading image file: {filePath}");
+            ErrorLogService.Write(exception, $"Opening image file editor: {filePath}");
             System.Windows.MessageBox.Show(
-                $"Не удалось загрузить изображение.\n\n{exception.Message}",
+                $"Не удалось открыть изображение в редакторе.\n\n{exception.Message}",
                 "B5MShot",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
