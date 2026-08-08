@@ -90,7 +90,7 @@ public static class LandingPage
         <div class="eyebrow"><span class="dot"></span> Создано для Windows</div>
         <h1>Скриншот. Правки. <span class="gradient-text">Готовая ссылка.</span></h1>
         <p class="lead">B5MShot помогает выделить область экрана, сразу добавить стрелки, текст или мозаику и загрузить результат в облако — без лишних окон и аккаунтов.</p>
-        <div class="hero-actions"><a class="button primary" href="/download/B5MShot.exe">Скачать B5MShot 0.4.2 <span aria-hidden="true">↓</span></a><a class="button" href="https://t.me/BU5INESSMAN" rel="noreferrer">Связаться с разработчиком</a></div>
+        <div class="hero-actions"><a class="button primary" href="/download/B5MShot.exe">Скачать B5MShot 0.5.0 <span aria-hidden="true">↓</span></a><a class="button" href="https://t.me/BU5INESSMAN" rel="noreferrer">Связаться с разработчиком</a></div>
         <div class="download-note"><span class="windows-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Windows 10/11 · x64 · 68,7 МБ · бесплатная загрузка</div>
       </div>
       <div class="app-card" aria-label="Интерфейс B5MShot">

@@ -196,28 +196,57 @@ app.MapPost("/api/screenshots", async (HttpRequest request, StorageManager stora
 
 app.MapGet("/i/{id}", (string id, HttpContext context, StorageManager storage) =>
 {
-    if (!Regex.IsMatch(id, "^(?:[a-f0-9]{12}|[a-f0-9]{24})$", RegexOptions.CultureInvariant))
+    var screenshot = FindScreenshot(id, storage);
+    if (screenshot is null)
     {
         return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=300";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+    return Results.Content(ScreenshotPage.Render(id, screenshot.Value.Type, new FileInfo(screenshot.Value.Path).Length), "text/html; charset=utf-8");
+});
+
+app.MapMethods("/raw/{id}", [HttpMethods.Get, HttpMethods.Head], (string id, HttpContext context, StorageManager storage) =>
+{
+    var screenshot = FindScreenshot(id, storage);
+    if (screenshot is null)
+    {
+        return Results.NotFound();
+    }
+
+    var shouldDownload = bool.TryParse(context.Request.Query["download"], out var download) && download;
+    context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(
+        screenshot.Value.Path,
+        screenshot.Value.Type.ContentType,
+        fileDownloadName: shouldDownload ? $"B5MShot-{id}.{screenshot.Value.Type.Extension}" : null,
+        enableRangeProcessing: true);
+});
+
+app.Run();
+
+static (string Path, ImageType Type)? FindScreenshot(string id, StorageManager storage)
+{
+    if (!Regex.IsMatch(id, "^(?:[a-f0-9]{12}|[a-f0-9]{24})$", RegexOptions.CultureInvariant))
+    {
+        return null;
     }
 
     foreach (var imageType in ImageTypes.All)
     {
         var filePath = storage.FindFile(id, imageType.Extension);
-        if (filePath is null)
+        if (filePath is not null)
         {
-            continue;
+            return (filePath, imageType);
         }
-
-        context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-        context.Response.Headers.XContentTypeOptions = "nosniff";
-        return Results.File(filePath, imageType.ContentType, enableRangeProcessing: true);
     }
 
-    return Results.NotFound();
-});
-
-app.Run();
+    return null;
+}
 
 static ImageType? DetectImageType(ReadOnlySpan<byte> header)
 {

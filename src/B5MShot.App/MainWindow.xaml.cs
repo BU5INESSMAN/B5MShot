@@ -21,7 +21,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settingsService = settingsService;
         _autoStartService = autoStartService;
-        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.4.2"}";
+        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.5.0"}";
         RefreshFromSettings();
     }
 

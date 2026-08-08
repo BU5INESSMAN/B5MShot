@@ -1,6 +1,8 @@
 using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using B5MShot.App.Infrastructure;
 using B5MShot.App.Models;
@@ -17,6 +19,7 @@ public partial class App : System.Windows.Application
     private readonly GlobalHotKey _hotKeys = new();
     private readonly UpdateService _updateService = new();
     private readonly AutoStartService _autoStartService = new();
+    private readonly ShellIntegrationService _shellIntegrationService = new();
     private UploadService _uploadService = null!;
     private Forms.NotifyIcon? _trayIcon;
     private Icon? _trayAppIcon;
@@ -32,9 +35,22 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         RegisterErrorHandlers();
 
+        var uploadPath = GetUploadPath(e.Args);
+
         _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\B5MShot.SingleInstance", out var isFirstInstance);
         if (!isFirstInstance)
         {
+            if (uploadPath is not null)
+            {
+                _uploadService = new UploadService();
+                Dispatcher.BeginInvoke(async () =>
+                {
+                    await UploadImageFileAsync(uploadPath);
+                    Shutdown();
+                }, DispatcherPriority.ApplicationIdle);
+                return;
+            }
+
             System.Windows.MessageBox.Show("B5MShot уже запущен и находится в системном трее.", "B5MShot", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
@@ -44,6 +60,7 @@ public partial class App : System.Windows.Application
         {
             _settingsService.Load();
             _uploadService = new UploadService();
+            _shellIntegrationService.EnsureRegistered();
             MainAppWindow = new MainWindow(_settingsService, _autoStartService);
             MainWindow = MainAppWindow;
             _hotKeys.Initialize(MainAppWindow);
@@ -53,6 +70,11 @@ public partial class App : System.Windows.Application
             if (e.Args.Any(argument => argument.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
             {
                 Dispatcher.BeginInvoke((Action)ShowSettings, DispatcherPriority.ApplicationIdle);
+            }
+
+            if (uploadPath is not null)
+            {
+                Dispatcher.BeginInvoke(async () => await UploadImageFileAsync(uploadPath), DispatcherPriority.ApplicationIdle);
             }
 
             Dispatcher.BeginInvoke(async () =>
@@ -129,6 +151,22 @@ public partial class App : System.Windows.Application
     public void BeginCaptureArea() => StartCapture(fullscreen: false);
 
     public void BeginCaptureFullscreen() => StartCapture(fullscreen: true);
+
+    public async Task ChooseAndUploadImageAsync()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Выберите изображение для загрузки в B5MShot",
+            Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|Все файлы|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            await UploadImageFileAsync(dialog.FileName);
+        }
+    }
 
     private void StartCapture(bool fullscreen)
     {
@@ -221,6 +259,7 @@ public partial class App : System.Windows.Application
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Выделить область", null, (_, _) => Dispatcher.Invoke(BeginCaptureArea));
         menu.Items.Add("Весь экран", null, (_, _) => Dispatcher.Invoke(BeginCaptureFullscreen));
+        menu.Items.Add("Загрузить изображение…", null, (_, _) => Dispatcher.Invoke(async () => await ChooseAndUploadImageAsync()));
         menu.Items.Add("Настройки", null, (_, _) => Dispatcher.Invoke(ShowSettings));
         menu.Items.Add("Проверить обновления", null, (_, _) => Dispatcher.Invoke(async () => await CheckForUpdatesAsync(true)));
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -244,6 +283,78 @@ public partial class App : System.Windows.Application
                 Dispatcher.Invoke(ToggleSettings);
             }
         };
+    }
+
+    private async Task UploadImageFileAsync(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException("Выбранное изображение не найдено.", filePath);
+            }
+
+            var file = new FileInfo(filePath);
+            if (file.Length > 50L * 1024 * 1024)
+            {
+                throw new InvalidOperationException("Файл слишком большой. Максимальный размер исходного изображения — 50 МБ.");
+            }
+
+            BitmapImage image;
+            await using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                image = new BitmapImage();
+                image.BeginInit();
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.StreamSource = stream;
+                image.EndInit();
+                image.Freeze();
+            }
+
+            if (image.PixelWidth <= 0 || image.PixelHeight <= 0 || (long)image.PixelWidth * image.PixelHeight > 100_000_000)
+            {
+                throw new InvalidOperationException("Изображение имеет неподдерживаемый размер.");
+            }
+
+            var result = await _uploadService.UploadAsync(image);
+            ClipboardService.SetText(result.Url);
+            System.Windows.MessageBox.Show(
+                $"Изображение загружено. Ссылка скопирована в буфер обмена.\n\n{result.Url}",
+                "B5MShot",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception exception)
+        {
+            ErrorLogService.Write(exception, $"Uploading image file: {filePath}");
+            System.Windows.MessageBox.Show(
+                $"Не удалось загрузить изображение.\n\n{exception.Message}",
+                "B5MShot",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private static string? GetUploadPath(IReadOnlyList<string> arguments)
+    {
+        for (var index = 0; index < arguments.Count - 1; index++)
+        {
+            if (arguments[index].Equals("--upload", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(arguments[index + 1]))
+            {
+                try
+                {
+                    return Path.GetFullPath(arguments[index + 1]);
+                }
+                catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+                {
+                    ErrorLogService.Write(exception, "Reading Explorer upload path");
+                    return null;
+                }
+            }
+        }
+
+        return null;
     }
 
     private void RegisterErrorHandlers()
