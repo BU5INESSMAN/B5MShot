@@ -6,6 +6,9 @@ obj/
 *.suo
 *.tgz
 *.exe
+*.msix
+*.cer
+*.pfx
 release/
 *-preview*.png
 *.log

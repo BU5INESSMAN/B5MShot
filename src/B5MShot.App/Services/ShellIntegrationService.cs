@@ -1,10 +1,22 @@
 using Microsoft.Win32;
+using System.Runtime.InteropServices;
 
 namespace B5MShot.App.Services;
 
 public sealed class ShellIntegrationService
 {
     private const string MenuKeyPath = @"Software\Classes\SystemFileAssociations\image\shell\B5MShot.Upload";
+
+    public void ConfigureForCurrentInstallation()
+    {
+        if (PackageIdentity.IsPackaged)
+        {
+            RemoveLegacyRegistration();
+            return;
+        }
+
+        EnsureRegistered();
+    }
 
     public void EnsureRegistered()
     {
@@ -31,5 +43,33 @@ public sealed class ShellIntegrationService
         {
             ErrorLogService.Write(exception, "Registering Explorer context menu");
         }
+    }
+
+    private static void RemoveLegacyRegistration()
+    {
+        try
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(MenuKeyPath, throwOnMissingSubKey: false);
+        }
+        catch (Exception exception)
+        {
+            ErrorLogService.Write(exception, "Removing legacy Explorer context menu");
+        }
+    }
+
+    private static class PackageIdentity
+    {
+        public static bool IsPackaged
+        {
+            get
+            {
+                var length = 0;
+                var result = GetCurrentPackageFullName(ref length, null);
+                return result is 0 or 122;
+            }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetCurrentPackageFullName(ref int packageFullNameLength, System.Text.StringBuilder? packageFullName);
     }
 }

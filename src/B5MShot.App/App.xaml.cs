@@ -60,7 +60,7 @@ public partial class App : System.Windows.Application
         {
             _settingsService.Load();
             _uploadService = new UploadService();
-            _shellIntegrationService.EnsureRegistered();
+            _shellIntegrationService.ConfigureForCurrentInstallation();
             MainAppWindow = new MainWindow(_settingsService, _autoStartService);
             MainWindow = MainAppWindow;
             _hotKeys.Initialize(MainAppWindow);

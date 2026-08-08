@@ -1,0 +1,4 @@
+LIBRARY "B5MShot.ContextMenu"
+EXPORTS
+    DllCanUnloadNow PRIVATE
+    DllGetClassObject PRIVATE

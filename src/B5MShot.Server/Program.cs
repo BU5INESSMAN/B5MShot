@@ -15,6 +15,7 @@ if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var publicUri) 
 settings.Validate();
 var storagePath = Path.GetFullPath(settings.StoragePath);
 var downloadPath = Path.GetFullPath(settings.DownloadPath);
+var setupDownloadPath = Path.GetFullPath(settings.SetupDownloadPath);
 var logoPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "logo.png");
 var socialPreviewPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "og.png");
 Directory.CreateDirectory(storagePath);
@@ -113,6 +114,23 @@ app.MapMethods("/download/B5MShot.exe", [HttpMethods.Get, HttpMethods.Head], (Ht
         "application/vnd.microsoft.portable-executable",
         fileDownloadName: "B5MShot.exe",
         lastModified: File.GetLastWriteTimeUtc(downloadPath),
+        enableRangeProcessing: true);
+});
+
+app.MapMethods("/download/B5MShot-Setup.exe", [HttpMethods.Get, HttpMethods.Head], (HttpContext context) =>
+{
+    if (!File.Exists(setupDownloadPath))
+    {
+        return Results.NotFound(new { error = "setup_download_not_ready" });
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=300, must-revalidate";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(
+        setupDownloadPath,
+        "application/vnd.microsoft.portable-executable",
+        fileDownloadName: "B5MShot-Setup.exe",
+        lastModified: File.GetLastWriteTimeUtc(setupDownloadPath),
         enableRangeProcessing: true);
 });
 
@@ -266,6 +284,7 @@ public sealed class ShotSettings
     public string PublicBaseUrl { get; init; } = "https://s.bu5inessman.ru";
     public string StoragePath { get; init; } = "/data/screenshots";
     public string DownloadPath { get; init; } = "/data/downloads/B5MShot.exe";
+    public string SetupDownloadPath { get; init; } = "/data/downloads/B5MShot-Setup.exe";
     public long MaxUploadBytes { get; init; } = 15 * 1024 * 1024;
     public long MaxStorageBytes { get; init; } = 70L * 1024 * 1024 * 1024;
     public long CleanupTargetBytes { get; init; } = 65L * 1024 * 1024 * 1024;

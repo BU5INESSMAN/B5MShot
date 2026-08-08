@@ -82,7 +82,7 @@ public static class LandingPage
 <body>
   <header class="container nav">
     <a class="brand" href="/" aria-label="B5MShot — главная"><img src="/assets/logo.png" alt=""><span>B5MShot</span></a>
-    <nav class="nav-actions" aria-label="Основная навигация"><a class="nav-link" href="#features">Возможности</a><a class="nav-link" href="#how">Как работает</a><a class="button compact" href="/download/B5MShot.exe">Скачать</a></nav>
+    <nav class="nav-actions" aria-label="Основная навигация"><a class="nav-link" href="#features">Возможности</a><a class="nav-link" href="#how">Как работает</a><a class="button compact" href="/download/B5MShot-Setup.exe">Скачать</a></nav>
   </header>
   <main>
     <section class="container hero">
@@ -90,8 +90,8 @@ public static class LandingPage
         <div class="eyebrow"><span class="dot"></span> Создано для Windows</div>
         <h1>Скриншот. Правки. <span class="gradient-text">Готовая ссылка.</span></h1>
         <p class="lead">B5MShot помогает выделить область экрана, сразу добавить стрелки, текст или мозаику и загрузить результат в облако — без лишних окон и аккаунтов.</p>
-        <div class="hero-actions"><a class="button primary" href="/download/B5MShot.exe">Скачать B5MShot 0.5.1 <span aria-hidden="true">↓</span></a><a class="button" href="https://t.me/BU5INESSMAN" rel="noreferrer">Связаться с разработчиком</a></div>
-        <div class="download-note"><span class="windows-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Windows 10/11 · x64 · 68,7 МБ · бесплатная загрузка</div>
+        <div class="hero-actions"><a class="button primary" href="/download/B5MShot-Setup.exe">Установить B5MShot 0.6.0 <span aria-hidden="true">↓</span></a><a class="button" href="/download/B5MShot.exe">Переносимая версия</a><a class="button" href="https://t.me/BU5INESSMAN" rel="noreferrer">Связаться с разработчиком</a></div>
+        <div class="download-note"><span class="windows-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Windows 10/11 · x64 · современное меню Проводника · тестовый сертификат</div>
       </div>
       <div class="app-card" aria-label="Интерфейс B5MShot">
         <div class="app-inner">
@@ -122,7 +122,7 @@ public static class LandingPage
       <div class="steps"><article class="step"><h3>Сделайте снимок</h3><p>Нажмите Print Screen и выделите нужную область.</p></article><article class="step"><h3>Добавьте пометки</h3><p>Подчеркните главное, добавьте текст или скройте приватные данные.</p></article><article class="step"><h3>Поделитесь</h3><p>Нажмите «Загрузить» — ссылка автоматически скопируется.</p></article></div>
     </section>
 
-    <section class="container cta"><div><h2>Готовы сделать первый снимок?</h2><p>Скачайте B5MShot для Windows и запустите — установка .NET не требуется.</p></div><a class="button primary" href="/download/B5MShot.exe">Скачать для Windows <span aria-hidden="true">↓</span></a></section>
+    <section class="container cta"><div><h2>Готовы сделать первый снимок?</h2><p>Скачайте установщик B5MShot для Windows — установка .NET не требуется.</p></div><a class="button primary" href="/download/B5MShot-Setup.exe">Скачать установщик <span aria-hidden="true">↓</span></a></section>
   </main>
   <footer class="container"><span>© 2026 B5MShot · Снимки по ссылке являются публичными</span><div class="footer-links"><a href="/health">Состояние сервиса</a><a href="https://t.me/BU5INESSMAN" rel="noreferrer">Сообщить об ошибке</a></div></footer>
 </body>
