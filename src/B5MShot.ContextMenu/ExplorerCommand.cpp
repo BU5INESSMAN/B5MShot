@@ -315,7 +315,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID)
     return TRUE;
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object)
+STDAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object)
 {
     if (clsid != CommandClsid)
     {
@@ -333,7 +333,7 @@ extern "C" __declspec(dllexport) HRESULT WINAPI DllGetClassObject(REFCLSID clsid
     return result;
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllCanUnloadNow()
+STDAPI DllCanUnloadNow()
 {
     return g_objectCount == 0 && g_serverLocks == 0 ? S_OK : S_FALSE;
 }
