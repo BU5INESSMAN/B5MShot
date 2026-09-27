@@ -16,6 +16,18 @@ internal static class Program
 {
     [STAThread] static void Main(string[] args)
     {
+        if(args.Contains("--verify-update"))
+        {
+            Task.Run(async()=>{
+                using var client=new System.Net.Http.HttpClient();client.DefaultRequestHeaders.UserAgent.ParseAdd("B5MShot-Release-QA/0.8");
+                using var document=System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("https://api.github.com/repos/BU5INESSMAN/B5MShot/releases/latest"));
+                var update=UpdateService.ParseRelease(document.RootElement,new Version(0,6,0,0)) ?? throw new Exception("Published update not found");
+                if(UpdateService.ParseRelease(document.RootElement,new Version(0,8,0,0)) is not null)throw new Exception("Already current version prompted");
+                var path=await UpdateInstaller.DownloadAsync(update,new Progress<int>(),CancellationToken.None);
+                Console.WriteLine($"PASS live updater: {update.VersionLabel}; installer downloaded and SHA-256 verified. No installation launched. {path}");
+            }).GetAwaiter().GetResult();
+            return;
+        }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/B5MShot;component/Themes/Glass.xaml") });
         if (args.Contains("--surfaces"))

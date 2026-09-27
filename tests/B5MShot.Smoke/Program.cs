@@ -163,6 +163,10 @@ internal static class Program
                 Rect Bounds(FrameworkElement element)=>element.TransformToAncestor(root).TransformBounds(new Rect(element.RenderSize));
                 var area=new Rect(-1,-1,root.ActualWidth+2,root.ActualHeight+2);
                 Check(area.Contains(Bounds(toolbar)) && area.Contains(Bounds(palette)), $"{edge}: toolbar and open palette stay inside editor");
+                var sv=(FrameworkElement)placed.FindName("SvField");
+                var hit=root.InputHitTest(sv.TranslatePoint(new Point(sv.ActualWidth/2,sv.ActualHeight/2),root)) as DependencyObject;
+                while(hit is not null && !ReferenceEquals(hit,palette)) hit=VisualTreeHelper.GetParent(hit);
+                Check(ReferenceEquals(hit,palette),$"{edge}: overflowing palette receives pointer input");
                 var orientation=((StackPanel)placed.FindName("ToolPanel")).Orientation;
                 Check((orientation==Orientation.Vertical)==preferences.IsVertical,$"{edge}: correct orientation, upright icons");
                 Check(PixelsEqual(fixture,(BitmapSource)Call(placed,"RenderFinalImage")!),$"{edge}: export excludes all chrome");
@@ -173,6 +177,15 @@ internal static class Program
                 area=new Rect(-1,-1,root.ActualWidth+2,root.ActualHeight+2);
                 Check(area.Contains(Bounds(toolbar)) && area.Contains(Bounds(palette)), $"{edge}: small-window bounds remain safe");
                 placed.Close();
+                var monitor=System.Windows.Forms.Screen.AllScreens.Last();
+                var fixedPreferences=preferences with {MonitorDeviceName=monitor.DeviceName};
+                var selector=new SelectionWindow(fixture,capture,fixedPreferences);selector.Show();Pump(100);
+                var hint=(FrameworkElement)selector.FindName("SelectionHud");
+                var captureArea=(FrameworkElement)selector.FindName("CaptureArea");
+                var monitorBounds=ScreenPlacement.MonitorBounds(selector,monitor);monitorBounds.Inflate(1,1);
+                var hintBounds=hint.TransformToAncestor(captureArea).TransformBounds(new Rect(hint.RenderSize));
+                Check(monitorBounds.Contains(hintBounds),$"{edge}: hint attaches to requested monitor");
+                selector.Close();
             }
             AppContext.SetSwitch("B5MShot.DisableAnimations", false);
             var times = new List<double>();
