@@ -109,6 +109,7 @@ internal static class Program
             Check(clip.Reveal == 0 && !clip.IsHitTestVisible && !((StackPanel)window.FindName("PaletteContent")).IsEnabled, "Closed palette cannot intercept input");
             var frame = (SelectionOutline)window.FindName("SelectionFrame");
             Check(frame.ActualWidth > 0 && !frame.IsHitTestVisible, "Imported image has a non-intercepting selection outline");
+            Check(((ToggleButton)window.FindName("MoveToolButton")).Visibility == Visibility.Collapsed, "Imported image does not offer unavailable desktop crop controls");
             window.Close(); Pump(260);
             Check(!window.IsVisible, "Editor exits after its short closing animation");
             var inline = new PreviewWindow(crop, new UploadService(), fixture, new Rect(.125, .185185, .75, .62963));
@@ -221,6 +222,17 @@ internal static class Program
                 placed.Close();
                 var monitor=System.Windows.Forms.Screen.AllScreens.Last();
                 var fixedPreferences=preferences with {MonitorDeviceName=monitor.DeviceName};
+                var desktopEditor=new PreviewWindow(crop,new UploadService(),fixture,new Rect(.125,.185185,.75,.62963),fixedPreferences);
+                desktopEditor.Show(); Pump(100); Call(desktopEditor,"SetPaletteOpen",true); Pump(100);
+                var desktopRoot=(FrameworkElement)desktopEditor.FindName("Root");
+                var desktopBar=(FrameworkElement)desktopEditor.FindName("HudBar");
+                var desktopPalette=(FrameworkElement)desktopEditor.FindName("PaletteClip");
+                var desktopMonitor=ScreenPlacement.MonitorBounds(desktopEditor,monitor);desktopMonitor.Inflate(1,1);
+                Check(desktopMonitor.Contains(desktopBar.TransformToAncestor(desktopRoot).TransformBounds(new Rect(desktopBar.RenderSize)))
+                    && desktopMonitor.Contains(desktopPalette.TransformToAncestor(desktopRoot).TransformBounds(new Rect(desktopPalette.RenderSize))),$"{edge}: extra move tool and palette fit selected monitor");
+                Call(desktopEditor,"ApplySelection",new Int32Rect(0,0,960,540)); Pump(50);
+                Check(PixelsEqual(fixture,(BitmapSource)Call(desktopEditor,"RenderFinalImage")!),$"{edge}: resized crop exports correctly with palette open");
+                desktopEditor.Close();
                 var selector=new SelectionWindow(fixture,capture,fixedPreferences);selector.Show();Pump(100);
                 var hint=(FrameworkElement)selector.FindName("SelectionHud");
                 var captureArea=(FrameworkElement)selector.FindName("CaptureArea");
