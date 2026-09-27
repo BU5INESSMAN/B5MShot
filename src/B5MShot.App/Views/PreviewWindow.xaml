@@ -60,7 +60,8 @@
 <ToggleButton Style="{StaticResource HudTool}" Tag="Arrow" ToolTip="Стрелка" AutomationProperties.Name="Стрелка" IsChecked="false" Click="ToolButton_Click"><Path Data="M 2,18 L 18,2 M 7,2 L 18,2 L 18,13" Stroke="#EAF1FF" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="20" Height="20"/></ToggleButton>
 <ToggleButton  Style="{StaticResource HudTool}" Tag="Rectangle" Content="&#xE739;" ToolTip="Рамка" AutomationProperties.Name="Рамка" IsChecked="false" Click="ToolButton_Click"/>
 <ToggleButton  Style="{StaticResource HudTool}" Tag="Text" Content="&#xE8D2;" ToolTip="Текст" AutomationProperties.Name="Текст" IsChecked="false" Click="ToolButton_Click"/>
-<ToggleButton  Style="{StaticResource HudTool}" Tag="Blur" Content="&#xE80A;" ToolTip="Мозаика" AutomationProperties.Name="Мозаика" IsChecked="false" Click="ToolButton_Click"/></StackPanel></Grid>
+<ToggleButton  Style="{StaticResource HudTool}" Tag="Blur" Content="&#xE80A;" ToolTip="Мозаика" AutomationProperties.Name="Мозаика" IsChecked="false" Click="ToolButton_Click"/>
+<ToggleButton x:Name="MoveToolButton" Style="{StaticResource HudTool}" Tag="Move" Content="&#xE759;" ToolTip="Переместить область · M · стрелки — сдвиг, Shift+стрелки — размер, Ctrl — шаг 10 px" AutomationProperties.Name="Переместить и изменить размер области" Click="ToolButton_Click"/></StackPanel></Grid>
 <Border Width="1" Height="22" Background="#35FFFFFF" Margin="8,0"/>
 <Button x:Name="PaletteButton" Style="{StaticResource HudAction}" ToolTip="Цвет и толщина" AutomationProperties.Name="Цвет и толщина" Click="PaletteButton_Click"><Ellipse x:Name="ColorDot" Width="10" Height="10" Stroke="#DDFFFFFF" StrokeThickness="1" Fill="#ED4A5A"/></Button>
 <Border Width="1" Height="22" Background="#35FFFFFF" Margin="8,0"/><Button  Style="{StaticResource HudAction}" Content="&#xE7A7;" ToolTip="Отменить · Ctrl+Z" AutomationProperties.Name="Отменить · Ctrl+Z" Click="UndoButton_Click"/>

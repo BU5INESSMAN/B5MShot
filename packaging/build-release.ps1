@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$CertificateThumbprint)
 $ErrorActionPreference='Stop'
 $repoRoot=Split-Path $PSScriptRoot -Parent
-$output=Join-Path $repoRoot 'release/stable-0.8.0'
+$output=Join-Path $repoRoot 'release/stable-0.8.1'
 $package=Join-Path $output 'package'
 $payload=Join-Path $repoRoot 'src/B5MShot.Setup/payload'
 New-Item -ItemType Directory -Force -Path $output,$package,$payload | Out-Null

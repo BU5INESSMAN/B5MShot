@@ -18,6 +18,7 @@ public sealed class SelectionOutline : FrameworkElement
     private static readonly Pen Edge = Pen("#FFFFFFFF", 1);
     private static readonly Pen CornerShadow = Pen("#F0101722", 6);
     private static readonly Pen Corner = Pen("#FF82C6FF", 3);
+    public bool ShowHandles { get; set; }
     public SelectionOutline() { IsHitTestVisible = false; SnapsToDevicePixels = true; }
     protected override void OnRender(DrawingContext dc)
     {
@@ -35,5 +36,16 @@ public sealed class SelectionOutline : FrameworkElement
             }
         }
         geometry.Freeze(); dc.DrawGeometry(null, CornerShadow, geometry); dc.DrawGeometry(null, Corner, geometry);
+        if (ShowHandles)
+        {
+            foreach (var point in new[] { rect.TopLeft, rect.TopRight, rect.BottomLeft, rect.BottomRight,
+                new Point(rect.Left + rect.Width / 2, rect.Top), new Point(rect.Left + rect.Width / 2, rect.Bottom),
+                new Point(rect.Left, rect.Top + rect.Height / 2), new Point(rect.Right, rect.Top + rect.Height / 2) })
+            {
+                var handle = new Rect(point.X - 4, point.Y - 4, 8, 8);
+                dc.DrawRoundedRectangle(null, Shadow, handle, 2, 2);
+                dc.DrawRoundedRectangle(System.Windows.Media.Brushes.White, Edge, handle, 2, 2);
+            }
+        }
     }
 }

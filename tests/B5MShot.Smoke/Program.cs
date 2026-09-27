@@ -117,6 +117,48 @@ internal static class Program
             Check(PixelsEqual(crop, (BitmapSource)Call(inline, "RenderFinalImage")!), "Inline export excludes selection outline, desktop and HUD");
             var inlineFrame = (SelectionOutline)inline.FindName("SelectionFrame");
             Check(Math.Abs(inlineFrame.ActualWidth - inline.ActualWidth * .75) < 1, "Inline outline follows selected desktop region");
+            Check(inlineFrame.ShowHandles && ((ToggleButton)inline.FindName("MoveToolButton")).IsChecked == true, "Desktop crop has resize handles and defaults to move");
+            var originalRegion = new Int32Rect(120, 100, 720, 340);
+            var newRegion = new Int32Rect(70, 60, 810, 400);
+            Call(inline, "ApplySelection", newRegion); Pump(60);
+            Check(PixelsEqual(new CroppedBitmap(fixture, newRegion), (BitmapSource)Call(inline, "RenderFinalImage")!), "Expanded crop exports newly revealed source pixels, without scaling or chrome");
+            var annotation = new System.Windows.Shapes.Rectangle { Width=20,Height=20,Fill=Brushes.Red };
+            var annotations = (Canvas)inline.FindName("AnnotationCanvas");
+            Canvas.SetLeft(annotation, 15); Canvas.SetTop(annotation, 25); annotations.Children.Add(annotation);
+            var annotated = (BitmapSource)Call(inline, "RenderFinalImage")!;
+            Call(inline, "ApplySelection", originalRegion); Pump(40);
+            Check(Canvas.GetLeft(annotation)==-35 && Canvas.GetTop(annotation)==-15, "Annotations remain anchored to desktop pixels during resize");
+            Call(inline, "ApplySelection", newRegion); Pump(40);
+            Check(PixelsEqual(annotated, (BitmapSource)Call(inline, "RenderFinalImage")!), "Shrinking then expanding restores off-crop annotations exactly");
+            annotations.Children.Clear();
+            var bounds = (Rect)Call(inline,"SelectionBounds")!;
+            Check((SelectionEdge)Call(inline,"HitSelection",bounds.TopLeft)! == (SelectionEdge.Left|SelectionEdge.Top), "Corner hit test selects two-axis resize");
+            Check((SelectionEdge)Call(inline,"HitSelection",new Point(bounds.Left+bounds.Width/2,bounds.Top))! == SelectionEdge.Top, "Edge hit test selects one-axis resize");
+            var center = new Point(bounds.Left+bounds.Width/2,bounds.Top+bounds.Height/2);
+            Check((SelectionEdge)Call(inline,"HitSelection",center)! == SelectionEdge.Move, "Interior drag moves in selection tool");
+            Call(inline,"BeginSelectionDrag",SelectionEdge.Move,center);
+            Call(inline,"UpdateSelectionDrag",new Point(center.X+35,center.Y+20)); Pump(40);
+            Call(inline,"EndSelectionDrag",true); Pump(40);
+            Check(PixelsEqual(new CroppedBitmap(fixture,newRegion),(BitmapSource)Call(inline,"RenderFinalImage")!),"Escape/capture-loss rollback restores exact crop");
+            Call(inline,"ToolButton_Click",inline.FindName("PenToolButton"),new RoutedEventArgs());
+            Check((SelectionEdge)Call(inline,"HitSelection",center)! == SelectionEdge.None,"Drawing tool keeps interior drawing gestures");
+            Check((SelectionEdge)Call(inline,"HitSelection",bounds.TopLeft)! == (SelectionEdge.Left|SelectionEdge.Top),"Resize remains available while drawing tool is selected");
+            Check(SelectionGeometry.Change(originalRegion,SelectionEdge.Move,-10000,10000,960,540)==new Int32Rect(0,200,720,340),"Move clamps to desktop without changing size");
+            foreach(var edge in new[]{SelectionEdge.Left,SelectionEdge.Top,SelectionEdge.Right,SelectionEdge.Bottom,
+                SelectionEdge.Left|SelectionEdge.Top,SelectionEdge.Right|SelectionEdge.Top,SelectionEdge.Left|SelectionEdge.Bottom,SelectionEdge.Right|SelectionEdge.Bottom})
+            foreach(var delta in new[]{-10000,10000})
+            {
+                var changed=SelectionGeometry.Change(originalRegion,edge,delta,delta,960,540);
+                Check(changed.X>=0 && changed.Y>=0 && changed.Width>=4 && changed.Height>=4 && changed.X+changed.Width<=960 && changed.Y+changed.Height<=540,$"{edge}: resize cannot cross or escape source ({delta})");
+            }
+            Call(inline,"ApplySelection",new Int32Rect(0,0,960,540)); Pump(50);
+            Check(PixelsEqual(fixture,(BitmapSource)Call(inline,"RenderFinalImage")!),"Selection can expand to the full original desktop");
+            System.IO.Directory.CreateDirectory("release/selection-qa");
+            var selectionRoot=(FrameworkElement)inline.FindName("Root");
+            Call(inline,"ApplySelection",originalRegion); Pump(150);
+            var selectionPreview=new RenderTargetBitmap((int)selectionRoot.ActualWidth,(int)selectionRoot.ActualHeight,96,96,PixelFormats.Pbgra32);selectionPreview.Render(selectionRoot);
+            var selectionEncoder=new PngBitmapEncoder();selectionEncoder.Frames.Add(BitmapFrame.Create(selectionPreview));
+            using(var file=System.IO.File.Create("release/selection-qa/editor.png"))selectionEncoder.Save(file);
             inline.Close(); Pump(260);
             AppContext.SetSwitch("B5MShot.DisableAnimations", true);
             var reduced = new PreviewWindow(fixture, new UploadService()); reduced.Show(); Pump(100);
@@ -131,7 +173,7 @@ internal static class Program
             settings.HideAnimatedAsync().GetAwaiter().GetResult();
             settings.Show(); Pump(100);
             Check(shell.Opacity == 1, "Settings reopens visibly with reduced motion");
-            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.0"), "Settings displays release version");
+            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.1"), "Settings displays release version");
             settings.Close();
             var tray = new TrayMenuWindow("Print Screen", _ => { }); tray.Show(); Pump(100);
             Check(!tray.ShowInTaskbar && tray.ActualWidth == 316, "Tray menu stays compact and off taskbar");

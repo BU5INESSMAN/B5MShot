@@ -17,14 +17,15 @@ using WpfColor = System.Windows.Media.Color;
 using WpfImage = System.Windows.Controls.Image;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
 using WpfTextBox = System.Windows.Controls.TextBox;
+using Cursors = System.Windows.Input.Cursors;
 
 namespace B5MShot.App.Views;
 
 public partial class PreviewWindow : Window
 {
-    private enum EditorTool { Pen, Line, Arrow, Rectangle, Text, Blur }
+    private enum EditorTool { Pen, Line, Arrow, Rectangle, Text, Blur, Move }
 
-    private readonly BitmapSource _image;
+    private BitmapSource _image;
     private readonly UploadService _uploadService;
     private readonly List<List<UIElement>> _history = [];
     private EditorTool _currentTool = EditorTool.Pen;
@@ -53,7 +54,9 @@ public partial class PreviewWindow : Window
         AnnotationCanvas.Width = image.PixelWidth;
         AnnotationCanvas.Height = image.PixelHeight;
         ImageSizeText.Text = $"{image.PixelWidth} × {image.PixelHeight} px";
+        ConfigureSelectionEditing(desktop, region);
         ConfigureHud(desktop, region);
+        if (desktop is not null && region is not null) ToolButton_Click(MoveToolButton, new RoutedEventArgs());
         Closed += (_, _) => _lifetime.Cancel();
     }
 
@@ -74,7 +77,7 @@ public partial class PreviewWindow : Window
         Animate(ToolIndicator, _hudPreferences.IsVertical ? TranslateTransform.YProperty : TranslateTransform.XProperty,
             _hudPreferences.IsVertical ? ToolIndicator.Y : ToolIndicator.X,
             ToolPanel.Children.IndexOf(selected) * 44 + 2, B5MShot.App.Controls.Motion.Settle);
-        AnnotationCanvas.Cursor = tool == EditorTool.Text ? System.Windows.Input.Cursors.IBeam : System.Windows.Input.Cursors.Cross;
+        AnnotationCanvas.Cursor = tool == EditorTool.Move ? Cursors.SizeAll : tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
         StatusText.Text = tool switch
         {
             EditorTool.Pen => "Рисуйте свободной линией",
@@ -83,6 +86,7 @@ public partial class PreviewWindow : Window
             EditorTool.Rectangle => "Выделите область рамкой",
             EditorTool.Text => "Щёлкните по снимку и введите текст",
             EditorTool.Blur => "Выделите приватную область для мозаики",
+            EditorTool.Move => "Перетащите область · края и углы — размер · стрелки — сдвиг · Shift+стрелки — размер",
             _ => string.Empty
         };
     }
@@ -98,6 +102,7 @@ public partial class PreviewWindow : Window
 
     private void AnnotationCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_busy || _closing || _currentTool == EditorTool.Move) return;
         InvalidatePublishedImage();
         CommitActiveText();
         _start = e.GetPosition(AnnotationCanvas);
@@ -534,6 +539,12 @@ public partial class PreviewWindow : Window
 
     private async void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (_selectionDragging)
+        {
+            if (e.Key == Key.Escape) EndSelectionDrag(cancel: true);
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Escape)
         {
             if (_paletteOpen) SetPaletteOpen(false);
@@ -544,6 +555,7 @@ public partial class PreviewWindow : Window
         }
         if (Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
         if (_busy || _closing) { e.Handled = true; return; }
+        if (HandleSelectionKey(e)) return;
         if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Control)
         {
             return;

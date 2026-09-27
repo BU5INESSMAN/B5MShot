@@ -185,7 +185,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
         L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
         L"Продолжить установку?",
-        L"Установка B5MShot 0.8.0",
+        L"Установка B5MShot 0.8.1",
         MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
     if (confirmation != IDOK)
     {
@@ -302,7 +302,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     MessageBoxW(
         nullptr,
-        L"B5MShot 0.8.0 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
+        L"B5MShot 0.8.1 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
         L"B5MShot",
         MB_ICONINFORMATION);
     return 0;

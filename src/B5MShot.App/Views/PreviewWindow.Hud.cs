@@ -72,11 +72,7 @@ public partial class PreviewWindow
                 ScreenPlacement.CoverDesktop(this);
                 void PositionImage()
                 {
-                    ImageView.Width = selected.Width * Root.ActualWidth;
-                    ImageView.Height = selected.Height * Root.ActualHeight;
-                    Canvas.SetLeft(ImageView, selected.X * Root.ActualWidth);
-                    Canvas.SetTop(ImageView, selected.Y * Root.ActualHeight);
-                    PositionFrame(new Rect(selected.X * Root.ActualWidth, selected.Y * Root.ActualHeight, ImageView.Width, ImageView.Height));
+                    PositionSelectionImage();
                     PositionEditorHud();
                 }
                 SizeChanged += (_, _) => PositionImage();
@@ -129,6 +125,7 @@ public partial class PreviewWindow
         Height = SystemParameters.VirtualScreenHeight;
         DesktopImage.Source = desktop;
         DesktopImage.Visibility = DesktopDim.Visibility = InlineStage.Visibility = Visibility.Visible;
+        ImageView.Stretch = Stretch.Fill; // Match the desktop's pixel-to-window mapping on both axes.
         EditorStage.Children.Remove(ImageView);
         InlineStage.Children.Add(ImageView);
         EditorStage.Visibility = Visibility.Collapsed;
