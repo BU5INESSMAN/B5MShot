@@ -16,6 +16,9 @@ public partial class SelectionWindow : Window
     private readonly CaptureService _captureService;
     private Point _start;
     private bool _selecting;
+    private readonly RectangleGeometry _outer = new();
+    private readonly RectangleGeometry _hole = new();
+    public Rect SelectedRegion { get; private set; }
 
     public event EventHandler<BitmapSource>? CaptureFinished;
 
@@ -25,12 +28,22 @@ public partial class SelectionWindow : Window
         _screenshot = screenshot;
         _captureService = captureService;
         ScreenshotImage.Source = screenshot;
+        var mask = new GeometryGroup { FillRule = FillRule.EvenOdd };
+        mask.Children.Add(_outer);
+        mask.Children.Add(_hole);
+        DimLayer.Data = mask;
         Left = SystemParameters.VirtualScreenLeft;
         Top = SystemParameters.VirtualScreenTop;
         Width = SystemParameters.VirtualScreenWidth;
         Height = SystemParameters.VirtualScreenHeight;
         KeyDown += OnKeyDown;
-        Loaded += (_, _) => UpdateDimLayer(Rect.Empty);
+        Loaded += (_, _) =>
+        {
+            ScreenPlacement.CoverDesktop(this);
+            UpdateDimLayer(Rect.Empty);
+            ScreenPlacement.PositionHud(SelectionHud, this);
+        };
+        SizeChanged += (_, _) => { if (!_selecting) UpdateDimLayer(Rect.Empty); };
     }
 
     private void CaptureArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -69,6 +82,8 @@ public partial class SelectionWindow : Window
             return;
         }
 
+        SelectedRegion = new Rect(selection.X / CaptureArea.ActualWidth, selection.Y / CaptureArea.ActualHeight,
+            selection.Width / CaptureArea.ActualWidth, selection.Height / CaptureArea.ActualHeight);
         var result = _captureService.Crop(_screenshot, selection, CaptureArea.ActualWidth, CaptureArea.ActualHeight);
         CaptureFinished?.Invoke(this, result);
         Close();
@@ -83,7 +98,7 @@ public partial class SelectionWindow : Window
         SelectionRectangle.Height = selection.Height;
         Canvas.SetLeft(SizeBadge, selection.X);
         Canvas.SetTop(SizeBadge, Math.Max(4, selection.Y - 32));
-        SizeText.Text = $"{Math.Round(selection.Width)} × {Math.Round(selection.Height)}";
+        SizeText.Text = $"{Math.Round(selection.Width * _screenshot.PixelWidth / CaptureArea.ActualWidth)} × {Math.Round(selection.Height * _screenshot.PixelHeight / CaptureArea.ActualHeight)}";
         UpdateDimLayer(selection);
     }
 
@@ -98,10 +113,8 @@ public partial class SelectionWindow : Window
 
     private void UpdateDimLayer(Rect selection)
     {
-        var full = new RectangleGeometry(new Rect(0, 0, CaptureArea.ActualWidth, CaptureArea.ActualHeight));
-        DimLayer.Data = selection.IsEmpty
-            ? full
-            : new CombinedGeometry(GeometryCombineMode.Exclude, full, new RectangleGeometry(selection));
+        _outer.Rect = new Rect(0, 0, CaptureArea.ActualWidth, CaptureArea.ActualHeight);
+        _hole.Rect = selection.IsEmpty ? Rect.Empty : selection;
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)

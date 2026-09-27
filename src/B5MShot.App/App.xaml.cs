@@ -175,26 +175,47 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        var timing = System.Diagnostics.Stopwatch.StartNew();
         _captureActive = true;
+        var settingsWereVisible = MainAppWindow.IsVisible;
         MainAppWindow.Hide();
+        foreach (var resultHud in Windows.OfType<ResultHudWindow>().ToArray())
+        {
+            settingsWereVisible |= resultHud.IsVisible;
+            resultHud.Close();
+        }
 
         Dispatcher.BeginInvoke(async () =>
         {
-            await Task.Delay(120);
             try
             {
-                var screenshot = _captureService.CaptureVirtualScreen();
+                if (settingsWereVisible)
+                    await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+                var screenshot = await Task.Run(() =>
+                {
+                    if (settingsWereVisible) ScreenPlacement.FlushComposition();
+                    return _captureService.CaptureVirtualScreen();
+                });
                 if (fullscreen)
                 {
-                    var preview = new PreviewWindow(screenshot, _uploadService);
+                    var preview = new PreviewWindow(screenshot, _uploadService, screenshot, new Rect(0, 0, 1, 1));
+                    preview.ContentRendered += (_, _) => ErrorLogService.CaptureTiming(timing.ElapsedMilliseconds, screenshot.PixelWidth, screenshot.PixelHeight);
                     preview.Closed += (_, _) => _captureActive = false;
                     preview.Show();
                     return;
                 }
 
                 var selection = new SelectionWindow(screenshot, _captureService);
-                selection.CaptureFinished += (_, image) => new PreviewWindow(image, _uploadService).Show();
-                selection.Closed += (_, _) => _captureActive = false;
+                var editing = false;
+                selection.CaptureFinished += (_, image) =>
+                {
+                    var preview = new PreviewWindow(image, _uploadService, screenshot, selection.SelectedRegion);
+                    preview.Closed += (_, _) => _captureActive = false;
+                    preview.Show();
+                    editing = true;
+                };
+                selection.Closed += (_, _) => { if (!editing) _captureActive = false; };
+                selection.ContentRendered += (_, _) => ErrorLogService.CaptureTiming(timing.ElapsedMilliseconds, screenshot.PixelWidth, screenshot.PixelHeight);
                 selection.Show();
                 selection.Activate();
             }
@@ -205,7 +226,7 @@ public partial class App : System.Windows.Application
                 ShowSettings();
                 System.Windows.MessageBox.Show("Не удалось сделать снимок. Подробности записаны в журнал ошибок.", "B5MShot", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-        }, DispatcherPriority.ApplicationIdle);
+        }, DispatcherPriority.Normal);
     }
 
     public void ToggleSettings()
@@ -322,6 +343,12 @@ public partial class App : System.Windows.Application
             editor.Show();
             editor.Activate();
             await editorClosed.Task;
+            foreach (var hud in Windows.OfType<ResultHudWindow>().ToArray())
+            {
+                var hudClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                hud.Closed += (_, _) => hudClosed.TrySetResult();
+                await hudClosed.Task;
+            }
         }
         catch (Exception exception)
         {

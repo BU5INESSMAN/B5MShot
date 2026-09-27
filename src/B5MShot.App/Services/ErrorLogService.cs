@@ -5,6 +5,25 @@ namespace B5MShot.App.Services;
 
 public static class ErrorLogService
 {
+    public static void CaptureTiming(long elapsedMilliseconds, int width, int height)
+    {
+        // Only timing and dimensions; never pixels, clipboard contents or window titles.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                lock (SyncRoot)
+                {
+                    var directory = Path.GetDirectoryName(LogPath)!;
+                    Directory.CreateDirectory(directory);
+                    var path = Path.Combine(directory, "capture-timing.log");
+                    if (File.Exists(path) && new FileInfo(path).Length > 64 * 1024) File.WriteAllText(path, string.Empty);
+                    File.AppendAllText(path, $"{DateTimeOffset.Now:O} ready_ms={elapsedMilliseconds} pixels={width}x{height}{Environment.NewLine}");
+                }
+            }
+            catch { /* Diagnostics must not affect capturing. */ }
+        });
+    }
     private static readonly object SyncRoot = new();
 
     public static string LogPath { get; } = Path.Combine(

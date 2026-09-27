@@ -17,12 +17,14 @@ public sealed class UploadService
 
     public async Task<UploadResult> UploadAsync(BitmapSource image, CancellationToken cancellationToken = default)
     {
-        var imageBytes = EncodePng(image);
+        var imageBytes = await Task.Run(() => EncodePng(image), cancellationToken);
         try
         {
             return await SendAsync(Client, UploadEndpoint, imageBytes, cancellationToken);
         }
-        catch (Exception primaryException) when (primaryException is HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException primaryException) when (!cancellationToken.IsCancellationRequested &&
+            primaryException.InnerException is SocketException socketException &&
+            socketException.SocketErrorCode is SocketError.HostNotFound or SocketError.TryAgain or SocketError.NoData)
         {
             using var fallbackClient = CreateFallbackClient(FallbackAddress);
             try

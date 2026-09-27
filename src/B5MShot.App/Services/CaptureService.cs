@@ -19,20 +19,17 @@ public sealed class CaptureService
             graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size, CopyPixelOperation.SourceCopy);
         }
 
-        var handle = bitmap.GetHbitmap();
+        var data = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
         try
         {
-            var source = Imaging.CreateBitmapSourceFromHBitmap(
-                handle,
-                IntPtr.Zero,
-                Int32Rect.Empty,
-                BitmapSizeOptions.FromEmptyOptions());
+            var source = BitmapSource.Create(bitmap.Width, bitmap.Height, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32, null, data.Scan0, data.Stride * data.Height, data.Stride);
             source.Freeze();
             return source;
         }
         finally
         {
-            DeleteObject(handle);
+            bitmap.UnlockBits(data);
         }
     }
 

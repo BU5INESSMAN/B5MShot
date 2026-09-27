@@ -37,8 +37,10 @@ public partial class PreviewWindow : Window
     private WpfRectangle? _activeRectangle;
     private WpfTextBox? _activeTextBox;
     private string? _uploadedUrl;
+    private bool _busy;
+    private readonly CancellationTokenSource _lifetime = new();
 
-    public PreviewWindow(BitmapSource image, UploadService uploadService)
+    public PreviewWindow(BitmapSource image, UploadService uploadService, BitmapSource? desktop = null, Rect? region = null)
     {
         InitializeComponent();
         _image = image;
@@ -49,6 +51,8 @@ public partial class PreviewWindow : Window
         AnnotationCanvas.Width = image.PixelWidth;
         AnnotationCanvas.Height = image.PixelHeight;
         ImageSizeText.Text = $"{image.PixelWidth} × {image.PixelHeight} px";
+        ConfigureHud(desktop, region);
+        Closed += (_, _) => _lifetime.Cancel();
     }
 
     private void ToolButton_Click(object sender, RoutedEventArgs e)
@@ -65,6 +69,8 @@ public partial class PreviewWindow : Window
         }
 
         _currentTool = tool;
+        Animate(ToolIndicator, System.Windows.Media.TranslateTransform.XProperty, ToolIndicator.X,
+            ToolPanel.Children.IndexOf(selected) * 44 + 2, 220);
         AnnotationCanvas.Cursor = tool == EditorTool.Text ? System.Windows.Input.Cursors.IBeam : System.Windows.Input.Cursors.Cross;
         StatusText.Text = tool switch
         {
@@ -83,11 +89,13 @@ public partial class PreviewWindow : Window
         if (sender is WpfButton { Tag: string colorText })
         {
             _currentColor = (WpfColor)System.Windows.Media.ColorConverter.ConvertFromString(colorText);
+            SetPaletteColor(_currentColor);
         }
     }
 
     private void AnnotationCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        InvalidatePublishedImage();
         CommitActiveText();
         _start = e.GetPosition(AnnotationCanvas);
 
@@ -371,6 +379,7 @@ public partial class PreviewWindow : Window
         {
             return;
         }
+        InvalidatePublishedImage();
 
         var last = _history[^1];
         foreach (var element in last)
@@ -382,6 +391,7 @@ public partial class PreviewWindow : Window
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
+        InvalidatePublishedImage();
         CancelActiveText();
         AnnotationCanvas.Children.Clear();
         _history.Clear();
@@ -397,16 +407,18 @@ public partial class PreviewWindow : Window
         return result;
     }
 
-    private void CopyButton_Click(object sender, RoutedEventArgs e)
+    private async void CopyButton_Click(object sender, RoutedEventArgs e)
     {
-        CopyImage();
+        if (await CopyImageAsync()) Finish("Снимок скопирован");
     }
 
-    private bool CopyImage()
+    private async Task<bool> CopyImageAsync()
     {
+        if (_busy) return false;
+        SetBusy(true);
         try
         {
-            ClipboardService.SetImage(RenderFinalImage());
+            await ClipboardService.SetImageAsync(RenderFinalImage());
             StatusText.Text = "Изображение с правками скопировано";
             return true;
         }
@@ -416,15 +428,17 @@ public partial class PreviewWindow : Window
             StatusText.Text = "Буфер обмена занят. Попробуйте ещё раз.";
             return false;
         }
+        finally { SetBusy(false); }
     }
 
-    private void SaveButton_Click(object sender, RoutedEventArgs e)
+    private async void SaveButton_Click(object sender, RoutedEventArgs e)
     {
-        SaveImage();
+        if (await SaveImageAsync()) Finish("Снимок сохранён");
     }
 
-    private bool SaveImage()
+    private async Task<bool> SaveImageAsync()
     {
+        if (_busy) return false;
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Filter = "PNG (*.png)|*.png",
@@ -439,10 +453,15 @@ public partial class PreviewWindow : Window
 
         try
         {
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(RenderFinalImage()));
-            using var stream = File.Create(dialog.FileName);
-            encoder.Save(stream);
+            SetBusy(true);
+            var image = RenderFinalImage();
+            await Task.Run(() =>
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                using var stream = File.Create(dialog.FileName);
+                encoder.Save(stream);
+            });
             StatusText.Text = "Снимок с правками сохранён";
             return true;
         }
@@ -452,37 +471,40 @@ public partial class PreviewWindow : Window
             StatusText.Text = "Не удалось сохранить файл. Проверьте доступ к папке.";
             return false;
         }
+        finally { SetBusy(false); }
     }
 
     private async void UploadButton_Click(object sender, RoutedEventArgs e)
     {
-        UploadButton.IsEnabled = false;
+        if (_busy) return;
+        SetBusy(true);
         StatusText.Text = "Загружаю в ваше облако…";
 
         try
         {
-            var result = await _uploadService.UploadAsync(RenderFinalImage());
+            var result = await _uploadService.UploadAsync(RenderFinalImage(), _lifetime.Token);
             _uploadedUrl = result.Url;
             LinkText.Text = result.Url;
             LinkText.Visibility = Visibility.Visible;
-            UploadButton.Content = "Загружено";
             try
             {
-                ClipboardService.SetText(result.Url);
+                await ClipboardService.SetTextAsync(result.Url);
                 StatusText.Text = "Ссылка скопирована в буфер обмена";
             }
             catch (Exception clipboardException)
             {
                 ErrorLogService.Write(clipboardException, "Copying uploaded URL");
                 StatusText.Text = "Снимок загружен, но буфер обмена занят";
+                return; // Keep the link accessible until the user closes the editor.
             }
+            Finish(StatusText.Text, result.Url);
         }
         catch (Exception exception)
         {
             ErrorLogService.Write(exception, "Uploading screenshot");
             StatusText.Text = exception.Message;
-            UploadButton.IsEnabled = true;
         }
+        finally { SetBusy(false); UploadButton.IsEnabled = _uploadedUrl is null; }
     }
 
     private void LinkText_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -507,8 +529,17 @@ public partial class PreviewWindow : Window
         ((App)System.Windows.Application.Current).BeginCaptureArea();
     }
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private async void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape)
+        {
+            if (_paletteOpen) SetPaletteOpen(false);
+            else if (_activeTextBox is not null) CancelActiveText();
+            else if (!_busy) Close();
+            e.Handled = true;
+            return;
+        }
+        if (Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
         if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Control)
         {
             return;
@@ -521,19 +552,43 @@ public partial class PreviewWindow : Window
         }
         else if (e.Key == Key.S)
         {
-            if (SaveImage())
+            e.Handled = true;
+            if (await SaveImageAsync())
             {
-                Close();
+                Finish("Снимок сохранён");
             }
             e.Handled = true;
         }
         else if (e.Key == Key.C)
         {
-            if (CopyImage())
+            e.Handled = true;
+            if (await CopyImageAsync())
             {
-                Close();
+                Finish("Снимок скопирован");
             }
             e.Handled = true;
         }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        _busy = busy;
+        HudActions.IsEnabled = !busy;
+        AnnotationCanvas.IsHitTestVisible = !busy;
+        PaletteContent.IsEnabled = !busy && _paletteOpen;
+    }
+
+    private void InvalidatePublishedImage()
+    {
+        _uploadedUrl = null;
+        LinkText.Visibility = Visibility.Collapsed;
+        UploadButton.IsEnabled = true;
+    }
+
+    private void Finish(string message, string? url = null)
+    {
+        if (_lifetime.IsCancellationRequested) return;
+        Close();
+        new ResultHudWindow(message, url).Show();
     }
 }

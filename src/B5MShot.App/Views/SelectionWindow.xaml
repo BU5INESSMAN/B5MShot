@@ -12,7 +12,7 @@
                 <TextBlock x:Name="SizeText" Foreground="White" FontSize="12" />
             </Border>
         </Canvas>
-        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0" Background="#F0222837" BorderBrush="#596883" BorderThickness="1" CornerRadius="12" Padding="12,8" IsHitTestVisible="False">
+        <Border x:Name="SelectionHud" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#080A0E" CornerRadius="0,0,23,23" Padding="22,12" IsHitTestVisible="False">
             <StackPanel Orientation="Horizontal">
                 <Image Source="/Assets/logo.png" Width="24" Height="24" Margin="0,0,9,0" />
                 <TextBlock Text="Выделите область  •  Esc — отмена" Foreground="White" FontSize="14" VerticalAlignment="Center" />
