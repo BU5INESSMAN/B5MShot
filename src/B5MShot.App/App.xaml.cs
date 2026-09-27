@@ -22,10 +22,14 @@ public partial class App : System.Windows.Application
     private readonly ShellIntegrationService _shellIntegrationService = new();
     private UploadService _uploadService = null!;
     private Forms.NotifyIcon? _trayIcon;
+    private TrayMenuWindow? _trayMenu;
     private Icon? _trayAppIcon;
     private Mutex? _singleInstanceMutex;
     private bool _captureActive;
     private bool _checkingForUpdates;
+    private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
+    private Version? _notifiedUpdate;
+    public bool HasActiveEditor => _captureActive || Windows.OfType<PreviewWindow>().Any() || Windows.OfType<SelectionWindow>().Any();
 
     public bool IsShuttingDown { get; private set; }
     public MainWindow MainAppWindow { get; private set; } = null!;
@@ -42,6 +46,7 @@ public partial class App : System.Windows.Application
         {
             if (uploadPath is not null)
             {
+                _settingsService.Load();
                 _uploadService = new UploadService();
                 Dispatcher.BeginInvoke(async () =>
                 {
@@ -59,6 +64,7 @@ public partial class App : System.Windows.Application
         try
         {
             _settingsService.Load();
+            if (_settingsService.Current.StartWithWindows && _autoStartService.IsEnabled()) _autoStartService.SetEnabled(true);
             _uploadService = new UploadService();
             _shellIntegrationService.ConfigureForCurrentInstallation();
             MainAppWindow = new MainWindow(_settingsService, _autoStartService);
@@ -66,6 +72,8 @@ public partial class App : System.Windows.Application
             _hotKeys.Initialize(MainAppWindow);
             ApplyHotKeys();
             CreateTrayIcon();
+            _updateTimer.Tick += async (_,_) => await CheckForUpdatesAsync(userInitiated:false);
+            _updateTimer.Start();
 
             if (e.Args.Any(argument => argument.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
             {
@@ -107,7 +115,7 @@ public partial class App : System.Windows.Application
 
     public async Task CheckForUpdatesAsync(bool userInitiated)
     {
-        if (_checkingForUpdates || IsShuttingDown)
+        if (_checkingForUpdates || IsShuttingDown || (!userInitiated && HasActiveEditor))
         {
             return;
         }
@@ -126,6 +134,8 @@ public partial class App : System.Windows.Application
             }
 
             var window = new UpdateWindow(_updateService.CurrentVersion, update);
+            if(!userInitiated && _notifiedUpdate==update.Version) return;
+            _notifiedUpdate=update.Version;
             if (MainAppWindow.IsVisible)
             {
                 window.Owner = MainAppWindow;
@@ -177,11 +187,13 @@ public partial class App : System.Windows.Application
 
         var timing = System.Diagnostics.Stopwatch.StartNew();
         _captureActive = true;
+        _trayMenu?.Close();
         var settingsWereVisible = MainAppWindow.IsVisible;
         MainAppWindow.Hide();
         foreach (var resultHud in Windows.OfType<ResultHudWindow>().ToArray())
         {
             settingsWereVisible |= resultHud.IsVisible;
+            resultHud.Hide();
             resultHud.Close();
         }
 
@@ -193,23 +205,24 @@ public partial class App : System.Windows.Application
                     await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
                 var screenshot = await Task.Run(() =>
                 {
-                    if (settingsWereVisible) ScreenPlacement.FlushComposition();
+                    ScreenPlacement.FlushComposition();
                     return _captureService.CaptureVirtualScreen();
                 });
                 if (fullscreen)
                 {
-                    var preview = new PreviewWindow(screenshot, _uploadService, screenshot, new Rect(0, 0, 1, 1));
+                    var preview = new PreviewWindow(screenshot, _uploadService, screenshot, new Rect(0, 0, 1, 1), HudPreferences.FromSettings(_settingsService.Current));
                     preview.ContentRendered += (_, _) => ErrorLogService.CaptureTiming(timing.ElapsedMilliseconds, screenshot.PixelWidth, screenshot.PixelHeight);
                     preview.Closed += (_, _) => _captureActive = false;
                     preview.Show();
                     return;
                 }
 
-                var selection = new SelectionWindow(screenshot, _captureService);
+                var preferences = HudPreferences.FromSettings(_settingsService.Current);
+                var selection = new SelectionWindow(screenshot, _captureService, preferences);
                 var editing = false;
                 selection.CaptureFinished += (_, image) =>
                 {
-                    var preview = new PreviewWindow(image, _uploadService, screenshot, selection.SelectedRegion);
+                    var preview = new PreviewWindow(image, _uploadService, screenshot, selection.SelectedRegion, preferences with { MonitorDeviceName = selection.HudMonitorDeviceName });
                     preview.Closed += (_, _) => _captureActive = false;
                     preview.Show();
                     editing = true;
@@ -233,7 +246,7 @@ public partial class App : System.Windows.Application
     {
         if (MainAppWindow.IsVisible)
         {
-            MainAppWindow.Hide();
+            _ = MainAppWindow.HideAnimatedAsync();
         }
         else
         {
@@ -243,12 +256,11 @@ public partial class App : System.Windows.Application
 
     public void ShowSettings()
     {
+        _trayMenu?.Close();
         MainAppWindow.RefreshFromSettings();
         MainAppWindow.Show();
         MainAppWindow.WindowState = WindowState.Normal;
-        var workArea = SystemParameters.WorkArea;
-        MainAppWindow.Left = Math.Max(workArea.Left + 12, workArea.Right - MainAppWindow.Width - 12);
-        MainAppWindow.Top = Math.Max(workArea.Top + 12, workArea.Bottom - MainAppWindow.Height - 12);
+        ScreenPlacement.PositionNearTray(MainAppWindow);
         MainAppWindow.Activate();
     }
 
@@ -257,6 +269,7 @@ public partial class App : System.Windows.Application
         IsShuttingDown = true;
         _hotKeys.Dispose();
         _trayIcon?.Dispose();
+        _trayMenu?.Close();
         _trayAppIcon?.Dispose();
         MainAppWindow.Close();
         Shutdown();
@@ -277,15 +290,6 @@ public partial class App : System.Windows.Application
 
     private void CreateTrayIcon()
     {
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Выделить область", null, (_, _) => Dispatcher.Invoke(BeginCaptureArea));
-        menu.Items.Add("Весь экран", null, (_, _) => Dispatcher.Invoke(BeginCaptureFullscreen));
-        menu.Items.Add("Открыть изображение…", null, (_, _) => Dispatcher.Invoke(async () => await ChooseAndUploadImageAsync()));
-        menu.Items.Add("Настройки", null, (_, _) => Dispatcher.Invoke(ShowSettings));
-        menu.Items.Add("Проверить обновления", null, (_, _) => Dispatcher.Invoke(async () => await CheckForUpdatesAsync(true)));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Выход", null, (_, _) => Dispatcher.Invoke(ExitApplication));
-
         _trayAppIcon = Environment.ProcessPath is { } executablePath
             ? Icon.ExtractAssociatedIcon(executablePath)
             : null;
@@ -294,14 +298,38 @@ public partial class App : System.Windows.Application
         {
             Text = "B5MShot — работает в фоне",
             Icon = _trayAppIcon ?? SystemIcons.Application,
-            Visible = true,
-            ContextMenuStrip = menu
+            Visible = true
         };
         _trayIcon.MouseClick += (_, eventArgs) =>
         {
             if (eventArgs.Button == Forms.MouseButtons.Left)
             {
                 Dispatcher.Invoke(ToggleSettings);
+            }
+            else if (eventArgs.Button == Forms.MouseButtons.Right)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (_trayMenu is { IsVisible: true }) { _trayMenu.Close(); return; }
+                    _trayMenu = new TrayMenuWindow(HotKeyGesture.Parse(_settingsService.Current.AreaCaptureHotKey).DisplayName, async action =>
+                    {
+                        try
+                        {
+                            switch (action)
+                            {
+                                case "area": BeginCaptureArea(); break;
+                                case "screen": BeginCaptureFullscreen(); break;
+                                case "open": await ChooseAndUploadImageAsync(); break;
+                                case "settings": ShowSettings(); break;
+                                case "updates": await CheckForUpdatesAsync(true); break;
+                                case "help": System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://t.me/BU5INESSMAN") { UseShellExecute = true }); break;
+                                case "exit": ExitApplication(); break;
+                            }
+                        }
+                        catch (Exception exception) { ErrorLogService.Write(exception, "Tray action"); }
+                    });
+                    _trayMenu.Show(); _trayMenu.Activate();
+                });
             }
         };
     }
@@ -338,7 +366,7 @@ public partial class App : System.Windows.Application
             }
 
             var editorClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var editor = new PreviewWindow(image, _uploadService);
+            var editor = new PreviewWindow(image, _uploadService, hudPreferences: HudPreferences.FromSettings(_settingsService.Current));
             editor.Closed += (_, _) => editorClosed.TrySetResult();
             editor.Show();
             editor.Activate();
@@ -407,6 +435,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _updateTimer.Stop();
         _trayIcon?.Dispose();
         _trayAppIcon?.Dispose();
         _hotKeys.Dispose();

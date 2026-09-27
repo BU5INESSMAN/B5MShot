@@ -5,4 +5,5 @@ public sealed record UpdateInfo(
     string VersionLabel,
     string PageUrl,
     string DownloadUrl,
-    string ReleaseNotes);
+    string ReleaseNotes,
+    string? ChecksumsUrl = null);

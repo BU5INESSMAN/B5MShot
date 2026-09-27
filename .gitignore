@@ -9,6 +9,11 @@ obj/
 *.msix
 *.cer
 *.pfx
+*.obj
+*.res
+*.lib
+*.exp
+src/B5MShot.Setup/payload/
 release/
 *-preview*.png
 *.log

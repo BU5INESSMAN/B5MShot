@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs><linearGradient id="tile" x2=".8" y2="1"><stop stop-color="#43baff"/><stop offset=".55" stop-color="#147af3"/><stop offset="1" stop-color="#1254ce"/></linearGradient><linearGradient id="glass" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="url(#tile)"/>
+  <rect x="9" y="9" width="238" height="238" rx="59" fill="url(#glass)" stroke="#fff" stroke-opacity=".28" stroke-width="2"/>
+  <path d="M94 65H76Q65 65 65 76V94M162 65H180Q191 65 191 76V94M191 162V180Q191 191 180 191H162M94 191H76Q65 191 65 180V162" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round"/>
+  <rect x="100" y="103" width="56" height="50" rx="16" fill="#fff"/>
+  <rect x="112" y="111" width="32" height="7" rx="3.5" fill="#147af3"/>
+</svg>

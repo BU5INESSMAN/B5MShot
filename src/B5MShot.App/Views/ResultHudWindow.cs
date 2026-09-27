@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using B5MShot.App.Services;
+using B5MShot.App.Controls;
 using Button = System.Windows.Controls.Button;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
@@ -15,14 +16,16 @@ namespace B5MShot.App.Views;
 
 public sealed class ResultHudWindow : Window
 {
+    private bool _closing, _allowClose;
     public ResultHudWindow(string message, string? url)
     {
-        Width = 390; Height = url is null ? 58 : 104;
+        Width = 390; SizeToContent = SizeToContent.Height;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; ShowActivated = false; Topmost = true;
         var content = new StackPanel { Margin = new Thickness(20, 12, 20, 14) };
         var status = new TextBlock { Text = message, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = System.Windows.HorizontalAlignment.Center };
+        Motion.SetTextReveal(status, true);
         content.Children.Add(status);
         if (url is not null)
         {
@@ -41,7 +44,7 @@ public sealed class ResultHudWindow : Window
             };
             actions.Children.Add(open); actions.Children.Add(copy); content.Children.Add(actions);
         }
-        var surface = new Border { Background = new SolidColorBrush(Color.FromRgb(8, 10, 14)), CornerRadius = new CornerRadius(0, 0, 24, 24), Child = content };
+        var surface = new EdgeSurface { Reveal = 0, Background = new SolidColorBrush(Color.FromRgb(8, 10, 14)), CornerRadius = new CornerRadius(0, 0, 24, 24), Child = content };
         Content = surface;
         Loaded += (_, _) =>
         {
@@ -49,16 +52,23 @@ public sealed class ResultHudWindow : Window
             var dpi = VisualTreeHelper.GetDpi(this);
             Left = (monitor.Left + (monitor.Width - Width * dpi.DpiScaleX) / 2) / dpi.DpiScaleX;
             Top = monitor.Top / dpi.DpiScaleY;
-            if (SystemParameters.ClientAreaAnimation)
-            {
-                surface.RenderTransformOrigin = new Point(.5, 0);
-                var scale = new ScaleTransform(1, 1);
-                surface.RenderTransform = scale;
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.1, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-            }
+        };
+        ContentRendered += (_, _) => { Motion.To(surface, EdgeSurface.RevealProperty, 1, Motion.Enter, from: 0); Motion.Reveal(content, 40); };
+        Closing += async (_, args) =>
+        {
+            if (_allowClose || !IsVisible || !Motion.Enabled || System.Windows.Application.Current is App { IsShuttingDown: true }) return;
+            args.Cancel = true;
+            if (_closing) return;
+            _closing = true;
+            IsHitTestVisible = false;
+            Motion.To(surface, EdgeSurface.RevealProperty, 0, Motion.Exit, false);
+            Motion.To(content, OpacityProperty, 0, 120, false);
+            await Task.Delay(Motion.Exit);
+            _allowClose = true;
+            if (IsVisible) Close();
         };
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        timer.Tick += (_, _) => { if (!IsMouseOver) Close(); };
+        timer.Tick += (_, _) => { if (!IsMouseOver && !IsKeyboardFocusWithin) Close(); };
         Closed += (_, _) => timer.Stop();
         timer.Start();
     }

@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using B5MShot.App.Services;
+using B5MShot.App.Controls;
 using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
 using Size = System.Windows.Size;
@@ -18,10 +19,14 @@ public partial class PreviewWindow
 {
     private bool _paletteOpen;
     private bool _updatingColor;
+    private bool _closing;
+    private bool _allowClose;
+    private (string Message, string? Url)? _resultAfterClose;
     private double _hue = 354, _saturation = .688, _value = .929;
 
     private void ConfigureHud(BitmapSource? desktop, Rect? region)
     {
+        ConfigureHudOrientation(desktop is not null);
         void ApplyTheme()
         {
             if (desktop is not null) return;
@@ -29,6 +34,29 @@ public partial class PreviewWindow
             Background = new SolidColorBrush(light ? Color.FromRgb(233, 239, 246) : Color.FromRgb(22, 31, 48));
         }
         ApplyTheme();
+        Closing += async (_, args) =>
+        {
+            if (_allowClose || !IsLoaded || !Motion.Enabled || System.Windows.Application.Current is App { IsShuttingDown: true }) return;
+            args.Cancel = true;
+            if (_closing) return;
+            _closing = true;
+            _lifetime.Cancel();
+            SetBusy(true);
+            HudBar.CollapsedHeight = 0;
+            HudBar.CollapsedWidth = _hudPreferences.IsVertical ? 0 : HudBar.CollapsedWidth;
+            Motion.To(PaletteClip, EdgeSurface.RevealProperty, 0, 150, false);
+            Motion.To(HudBar, EdgeSurface.RevealProperty, 0, Motion.Exit, false);
+            Motion.To(HudActions, OpacityProperty, 0, 120, false);
+            Motion.To(StatusPanel, OpacityProperty, 0, 120, false);
+            Motion.To(SelectionFrame, OpacityProperty, 0, Motion.Exit, false);
+            await Task.Delay(Motion.Exit);
+            _allowClose = true;
+            if (IsVisible) Close();
+        };
+        Closed += (_, _) =>
+        {
+            if (_resultAfterClose is { } result) new ResultHudWindow(result.Message, result.Url).Show();
+        };
         Microsoft.Win32.UserPreferenceChangedEventHandler themeChanged = (_, _) =>
         {
             if (!Dispatcher.HasShutdownStarted) Dispatcher.BeginInvoke((Action)ApplyTheme);
@@ -39,9 +67,6 @@ public partial class PreviewWindow
         {
             SetPaletteColor(_currentColor);
             UpdateColorDot();
-            HudBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            HudHost.Width = HudBar.DesiredSize.Width;
-            HudBar.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
             if (desktop is not null && region is { } selected)
             {
                 ScreenPlacement.CoverDesktop(this);
@@ -51,15 +76,47 @@ public partial class PreviewWindow
                     ImageView.Height = selected.Height * Root.ActualHeight;
                     Canvas.SetLeft(ImageView, selected.X * Root.ActualWidth);
                     Canvas.SetTop(ImageView, selected.Y * Root.ActualHeight);
-                    ScreenPlacement.PositionHud(HudHost, this);
+                    PositionFrame(new Rect(selected.X * Root.ActualWidth, selected.Y * Root.ActualHeight, ImageView.Width, ImageView.Height));
+                    PositionEditorHud();
                 }
                 SizeChanged += (_, _) => PositionImage();
                 PositionImage();
             }
-            // Animate only the chrome; the image and input surface are ready immediately.
-            Animate(HudBar, WidthProperty, 260, HudBar.DesiredSize.Width, 260);
+            else
+            {
+                void PositionImportedFrame()
+                {
+                    if (ImageView.ActualWidth <= 0) return;
+                    PositionFrame(ImageView.TransformToAncestor(Root).TransformBounds(new Rect(ImageView.RenderSize)));
+                }
+                ImageView.SizeChanged += (_, _) => PositionImportedFrame();
+                Root.SizeChanged += (_, _) => PositionImportedFrame();
+                PositionImportedFrame();
+            }
+            PositionEditorHud();
+        };
+        // Start after the first displayed frame, not while loading the full-size bitmap.
+        ContentRendered += async (_, _) =>
+        {
+            Motion.To(HudBar, EdgeSurface.RevealProperty, 1, Motion.Enter, from: 0);
+            Motion.To(HudActions, OpacityProperty, 1, 200, false, 0, HandoffHint.Visibility == Visibility.Visible ? 80 : 0);
+            Motion.To(HandoffHint, OpacityProperty, 0, 140, false);
+            var buttons = ToolPanel.Children.OfType<FrameworkElement>().Concat(HudActions.Children.OfType<System.Windows.Controls.Button>());
+            var index = 0;
+            foreach (var button in buttons) Motion.Reveal(button, index++ * 12);
+            Motion.Reveal(StatusPanel, 50, -5);
+            Motion.To(SelectionFrame, OpacityProperty, 1, 250, false, .2);
+            if (Motion.Enabled) await Task.Delay(180);
+            HandoffHint.Visibility = Visibility.Collapsed;
         };
         if (desktop is null || region is null) return;
+        if (region.Value.Width < 1 || region.Value.Height < 1)
+        {
+            HudBar.CollapsedWidth = _hudPreferences.IsVertical ? 60 : 350;
+            HudBar.CollapsedHeight = _hudPreferences.IsVertical ? 200 : 60;
+            HandoffHint.Visibility = Visibility.Visible;
+            HudActions.Opacity = 0;
+        }
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -77,30 +134,38 @@ public partial class PreviewWindow
         EditorStage.Visibility = Visibility.Collapsed;
     }
 
+    private void PositionFrame(Rect bounds)
+    {
+        Canvas.SetLeft(SelectionFrame, bounds.X); Canvas.SetTop(SelectionFrame, bounds.Y);
+        SelectionFrame.Width = bounds.Width; SelectionFrame.Height = bounds.Height;
+    }
+
     private static void Animate(Animatable target, DependencyProperty property, double from, double to, int milliseconds)
     {
-        if (!SystemParameters.ClientAreaAnimation) { target.SetValue(property, to); return; }
-        target.BeginAnimation(property, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(milliseconds))
-        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        Motion.To(target, property, to, milliseconds, from: from);
     }
 
     private static void Animate(FrameworkElement target, DependencyProperty property, double from, double to, int milliseconds)
     {
-        if (!SystemParameters.ClientAreaAnimation) { target.SetValue(property, to); return; }
-        target.BeginAnimation(property, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(milliseconds))
-        { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        Motion.To(target, property, to, milliseconds, from: from);
     }
 
     private void PaletteButton_Click(object sender, RoutedEventArgs e) => SetPaletteOpen(!_paletteOpen);
 
     private void SetPaletteOpen(bool open)
     {
+        PositionEditorHud();
         _paletteOpen = open;
+        if (!open && PaletteContent.IsKeyboardFocusWithin) PaletteButton.Focus();
         PaletteClip.IsHitTestVisible = open;
         PaletteContent.IsEnabled = open;
-        PaletteContent.Measure(new Size(330, double.PositiveInfinity));
-        Animate(PaletteClip, HeightProperty, PaletteClip.ActualHeight, open ? PaletteContent.DesiredSize.Height : 0, open ? 320 : 230);
-        Animate(PaletteContent, OpacityProperty, PaletteContent.Opacity, open ? 1 : 0, 180);
+        Motion.To(PaletteClip, EdgeSurface.RevealProperty, open ? 1 : 0, open ? Motion.Enter : Motion.Exit, open);
+        Motion.To(PaletteContent, OpacityProperty, open ? 1 : 0, open ? 180 : 120, false);
+        if (open)
+        {
+            var index = 0;
+            foreach (FrameworkElement row in PaletteContent.Children) Motion.Reveal(row, index++ * 18, 9);
+        }
     }
 
     private void CloseEditor_Click(object sender, RoutedEventArgs e) { if (!_busy) Close(); }

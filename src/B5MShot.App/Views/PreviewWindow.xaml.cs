@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using B5MShot.App.Services;
+using B5MShot.App.Models;
 using Point = System.Windows.Point;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -40,11 +41,12 @@ public partial class PreviewWindow : Window
     private bool _busy;
     private readonly CancellationTokenSource _lifetime = new();
 
-    public PreviewWindow(BitmapSource image, UploadService uploadService, BitmapSource? desktop = null, Rect? region = null)
+    public PreviewWindow(BitmapSource image, UploadService uploadService, BitmapSource? desktop = null, Rect? region = null, HudPreferences? hudPreferences = null)
     {
         InitializeComponent();
         _image = image;
         _uploadService = uploadService;
+        _hudPreferences = hudPreferences ?? new();
         PreviewImage.Source = image;
         ImageCanvas.Width = image.PixelWidth;
         ImageCanvas.Height = image.PixelHeight;
@@ -69,8 +71,9 @@ public partial class PreviewWindow : Window
         }
 
         _currentTool = tool;
-        Animate(ToolIndicator, System.Windows.Media.TranslateTransform.XProperty, ToolIndicator.X,
-            ToolPanel.Children.IndexOf(selected) * 44 + 2, 220);
+        Animate(ToolIndicator, _hudPreferences.IsVertical ? TranslateTransform.YProperty : TranslateTransform.XProperty,
+            _hudPreferences.IsVertical ? ToolIndicator.Y : ToolIndicator.X,
+            ToolPanel.Children.IndexOf(selected) * 44 + 2, B5MShot.App.Controls.Motion.Settle);
         AnnotationCanvas.Cursor = tool == EditorTool.Text ? System.Windows.Input.Cursors.IBeam : System.Windows.Input.Cursors.Cross;
         StatusText.Text = tool switch
         {
@@ -540,6 +543,7 @@ public partial class PreviewWindow : Window
             return;
         }
         if (Keyboard.FocusedElement is System.Windows.Controls.TextBox) return;
+        if (_busy || _closing) { e.Handled = true; return; }
         if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Control)
         {
             return;
@@ -572,10 +576,10 @@ public partial class PreviewWindow : Window
 
     private void SetBusy(bool busy)
     {
-        _busy = busy;
-        HudActions.IsEnabled = !busy;
-        AnnotationCanvas.IsHitTestVisible = !busy;
-        PaletteContent.IsEnabled = !busy && _paletteOpen;
+        _busy = busy || _closing;
+        HudActions.IsEnabled = !_busy;
+        AnnotationCanvas.IsHitTestVisible = !_busy;
+        PaletteContent.IsEnabled = !_busy && _paletteOpen;
     }
 
     private void InvalidatePublishedImage()
@@ -588,7 +592,7 @@ public partial class PreviewWindow : Window
     private void Finish(string message, string? url = null)
     {
         if (_lifetime.IsCancellationRequested) return;
+        _resultAfterClose = (message, url);
         Close();
-        new ResultHudWindow(message, url).Show();
     }
 }

@@ -19,21 +19,27 @@ public sealed class UpdateService
         using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            return null;
+            throw new InvalidOperationException("Выпуск обновления пока недоступен.");
         }
 
         response.EnsureSuccessStatusCode();
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
         var root = document.RootElement;
+        return ParseRelease(root, CurrentVersion);
+    }
+
+    public static UpdateInfo? ParseRelease(JsonElement root, Version currentVersion)
+    {
         if (root.TryGetProperty("draft", out var draft) && draft.GetBoolean())
         {
             return null;
         }
+        if (root.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean()) return null;
 
         var tag = root.GetProperty("tag_name").GetString()?.Trim() ?? string.Empty;
         var normalizedTag = tag.TrimStart('v', 'V');
-        if (!Version.TryParse(normalizedTag, out var latestVersion) || latestVersion <= CurrentVersion)
+        if (!Version.TryParse(normalizedTag, out var latestVersion) || Normalize(latestVersion) <= Normalize(currentVersion))
         {
             return null;
         }
@@ -43,11 +49,19 @@ public sealed class UpdateService
             ? body.GetString() ?? "В новой версии есть улучшения и исправления."
             : "В новой версии есть улучшения и исправления.";
         var downloadUrl = FindWindowsDownload(root) ?? pageUrl;
-        return new UpdateInfo(latestVersion, string.IsNullOrWhiteSpace(tag) ? latestVersion.ToString(3) : tag, pageUrl, downloadUrl, releaseNotes);
+        return new UpdateInfo(latestVersion, string.IsNullOrWhiteSpace(tag) ? latestVersion.ToString(3) : tag, pageUrl, downloadUrl, releaseNotes, FindAsset(root,"SHA256SUMS.txt"));
     }
+
+    private static Version Normalize(Version version) => new(version.Major,version.Minor,Math.Max(0,version.Build),Math.Max(0,version.Revision));
+
+    private static string? FindAsset(JsonElement root,string filename) => root.TryGetProperty("assets",out var assets) && assets.ValueKind==JsonValueKind.Array
+        ? assets.EnumerateArray().Where(a=>a.TryGetProperty("name",out var name) && string.Equals(name.GetString(),filename,StringComparison.OrdinalIgnoreCase))
+            .Select(a=>a.TryGetProperty("browser_download_url",out var url)?url.GetString():null).FirstOrDefault() : null;
 
     private static string? FindWindowsDownload(JsonElement root)
     {
+        var installer = FindAsset(root,"B5MShot-Setup.exe");
+        if (installer is not null) return installer;
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
         {
             return null;
@@ -70,7 +84,7 @@ public sealed class UpdateService
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("B5MShot-Updater/0.4");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("B5MShot-Updater/0.8");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return client;
     }

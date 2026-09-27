@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
+WORKDIR /app
+COPY site-ui-v3/ .
+USER 10001:10001
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "B5MShot.Server.dll"]

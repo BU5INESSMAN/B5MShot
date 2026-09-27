@@ -5,6 +5,8 @@ using System.Windows;
 using System.Windows.Input;
 using B5MShot.App.Models;
 using B5MShot.App.Services;
+using B5MShot.App.Controls;
+using System.Windows.Media;
 
 namespace B5MShot.App;
 
@@ -15,18 +17,32 @@ public partial class MainWindow : Window
     private HotKeyGesture _areaGesture = HotKeyGesture.Disabled;
     private HotKeyGesture _fullscreenGesture = HotKeyGesture.Disabled;
     private HotKeyTarget _captureTarget;
+    private int _visibilityGeneration;
 
     public MainWindow(SettingsService settingsService, AutoStartService autoStartService)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _autoStartService = autoStartService;
-        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.6.0"}";
+        VersionText.Text = $"Версия {Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.7.0"}";
         RefreshFromSettings();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) return;
+            _visibilityGeneration++;
+            Dispatcher.BeginInvoke(() => Motion.Reveal(Shell, distance: -12));
+        };
     }
 
     public void RefreshFromSettings()
     {
+        var preferences = HudPreferences.FromSettings(_settingsService.Current);
+        foreach (var button in EdgeChoices.Children.OfType<System.Windows.Controls.RadioButton>()) button.IsChecked = (string)button.Tag == preferences.Edge.ToString();
+        var monitors = new List<MonitorChoice> { new("", "Автоматически — монитор с курсором") };
+        monitors.AddRange(System.Windows.Forms.Screen.AllScreens.Select((screen,index) => new MonitorChoice(screen.DeviceName,
+            $"Монитор {index+1} · {screen.Bounds.Width} × {screen.Bounds.Height}{(screen.Primary ? " · основной" : "")}")));
+        ToolbarMonitorBox.ItemsSource = monitors;
+        ToolbarMonitorBox.SelectedValue = monitors.Any(m=>m.DeviceName==preferences.MonitorDeviceName) ? preferences.MonitorDeviceName : "";
         _areaGesture = HotKeyGesture.Parse(_settingsService.Current.AreaCaptureHotKey);
         _fullscreenGesture = HotKeyGesture.Parse(_settingsService.Current.FullscreenCaptureHotKey);
         StartWithWindowsCheckBox.IsChecked = _autoStartService.IsEnabled();
@@ -44,6 +60,15 @@ public partial class MainWindow : Window
     private void CaptureButton_Click(object sender, RoutedEventArgs e) => ((App)System.Windows.Application.Current).BeginCaptureArea();
 
     private void CaptureFullscreenButton_Click(object sender, RoutedEventArgs e) => ((App)System.Windows.Application.Current).BeginCaptureFullscreen();
+
+    private async void OpenImageButton_Click(object sender, RoutedEventArgs e) => await ((App)System.Windows.Application.Current).ChooseAndUploadImageAsync();
+
+    private void AutoStartToggleChanged(object sender, RoutedEventArgs e)
+    {
+        StartWithWindowsCheckBox?.ApplyTemplate();
+        if (StartWithWindowsCheckBox?.Template.FindName("SwitchOffset", StartWithWindowsCheckBox) is TranslateTransform offset)
+            Motion.To(offset, TranslateTransform.XProperty, StartWithWindowsCheckBox.IsChecked == true ? 18 : 0, 260);
+    }
 
     private void AreaHotKeyButton_Click(object sender, RoutedEventArgs e) => BeginHotKeyCapture(HotKeyTarget.Area);
 
@@ -63,6 +88,7 @@ public partial class MainWindow : Window
     {
         if (_captureTarget == HotKeyTarget.None)
         {
+            if (e.Key == Key.Escape) { _ = HideAnimatedAsync(); e.Handled = true; }
             return;
         }
 
@@ -140,7 +166,9 @@ public partial class MainWindow : Window
             {
                 AreaCaptureHotKey = _areaGesture.StorageValue,
                 FullscreenCaptureHotKey = _fullscreenGesture.StorageValue,
-                StartWithWindows = startWithWindows
+                StartWithWindows = startWithWindows,
+                ToolbarEdge = (string?)EdgeChoices.Children.OfType<System.Windows.Controls.RadioButton>().FirstOrDefault(b=>b.IsChecked==true)?.Tag ?? "Top",
+                ToolbarMonitor = ToolbarMonitorBox.SelectedValue as string ?? ""
             });
             var error = ((App)System.Windows.Application.Current).ApplyHotKeys();
             SetStatus(error ?? "Настройки сохранены", error is not null);
@@ -187,14 +215,22 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Hide();
+    private async void CloseButton_Click(object sender, RoutedEventArgs e) => await HideAnimatedAsync();
+
+    public async Task HideAnimatedAsync()
+    {
+        var generation = ++_visibilityGeneration;
+        Motion.To(Shell, OpacityProperty, 0, Motion.Exit, false);
+        if (Motion.Enabled) await Task.Delay(Motion.Exit);
+        if (generation == _visibilityGeneration) Hide();
+    }
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!((App)System.Windows.Application.Current).IsShuttingDown)
+        if (System.Windows.Application.Current is App { IsShuttingDown: false })
         {
             e.Cancel = true;
-            Hide();
+            _ = HideAnimatedAsync();
             return;
         }
 
@@ -207,4 +243,5 @@ public partial class MainWindow : Window
         Area,
         Fullscreen
     }
+    private sealed record MonitorChoice(string DeviceName, string Label);
 }

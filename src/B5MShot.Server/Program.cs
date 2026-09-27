@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var settings = builder.Configuration.GetSection("B5MShot").Get<ShotSettings>() ?? new ShotSettings();
+var readOnlyUi = builder.Configuration.GetValue<bool>("B5MShot:ReadOnlyUi");
 
 if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var publicUri) || publicUri.Scheme != Uri.UriSchemeHttps)
 {
@@ -18,7 +19,8 @@ var downloadPath = Path.GetFullPath(settings.DownloadPath);
 var setupDownloadPath = Path.GetFullPath(settings.SetupDownloadPath);
 var logoPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "logo.png");
 var socialPreviewPath = Path.Combine(Path.GetDirectoryName(downloadPath)!, "og.png");
-Directory.CreateDirectory(storagePath);
+if (!readOnlyUi) Directory.CreateDirectory(storagePath);
+else if (!Directory.Exists(storagePath)) throw new InvalidOperationException("Read-only screenshot mount is missing.");
 
 var requestBodyLimit = checked(settings.MaxUploadBytes + 1024 * 1024);
 builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = requestBodyLimit);
@@ -27,7 +29,7 @@ builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton(new StorageManagerOptions(storagePath));
 builder.Services.AddSingleton<StorageManager>();
 builder.Services.AddSingleton<UploadGate>();
-builder.Services.AddHostedService<StorageCleanupService>();
+if (!readOnlyUi) builder.Services.AddHostedService<StorageCleanupService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -43,14 +45,34 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    if (readOnlyUi && !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+        return;
+    }
+    await next();
+});
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = ctx =>
+{
+    ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
+    ctx.Context.Response.Headers.XContentTypeOptions = "nosniff";
+} });
 app.UseRateLimiter();
 
-app.MapGet("/", (HttpContext context) =>
+app.MapMethods("/", [HttpMethods.Get, HttpMethods.Head], (HttpContext context) =>
 {
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
-    return Results.Content(LandingPage.Html, "text/html; charset=utf-8");
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+    return Results.File(Path.Combine(app.Environment.WebRootPath, "landing.html"), "text/html; charset=utf-8");
+});
+
+app.MapMethods("/download/B5MShot-preview.exe", [HttpMethods.Get, HttpMethods.Head], () =>
+{
+    var preview = Path.Combine(Path.GetDirectoryName(downloadPath)!, "B5MShot-preview.exe");
+    return File.Exists(preview) ? Results.File(preview, "application/vnd.microsoft.portable-executable", "B5MShot-preview.exe", enableRangeProcessing: true) : Results.NotFound();
 });
 
 app.MapGet("/api/info", () => Results.Json(new
@@ -223,7 +245,7 @@ app.MapGet("/i/{id}", (string id, HttpContext context, StorageManager storage) =
     context.Response.Headers.CacheControl = "public, max-age=300";
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
     return Results.Content(ScreenshotPage.Render(id, screenshot.Value.Type, new FileInfo(screenshot.Value.Path).Length), "text/html; charset=utf-8");
 });
 

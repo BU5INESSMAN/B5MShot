@@ -1,0 +1,27 @@
+<Window x:Class="B5MShot.App.Views.TrayMenuWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Меню B5MShot" Width="316" SizeToContent="Height" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+ AllowsTransparency="True" Background="Transparent" WindowStartupLocation="Manual" PreviewKeyDown="OnMenuKeyDown">
+ <Window.Resources>
+  <Style x:Key="MenuAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+   <Setter Property="Padding" Value="12,10"/><Setter Property="Margin" Value="0,2"/><Setter Property="FontWeight" Value="Normal"/>
+   <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+  </Style>
+ </Window.Resources>
+ <Border x:Name="Surface" Margin="12" Padding="12" Background="{StaticResource ShellGradientBrush}" BorderBrush="#70FFFFFF" BorderThickness="1" CornerRadius="24">
+  <Border.Effect><DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity=".25"/></Border.Effect>
+  <StackPanel>
+   <StackPanel Orientation="Horizontal" Margin="10,6,0,12"><Image Source="/Assets/logo.png" Width="30" Height="30"/><StackPanel Margin="10,0,0,0"><TextBlock Text="B5MShot" Foreground="White" FontWeight="SemiBold" FontSize="14"/><TextBlock Text="Поймай главное" Foreground="#B9C9DB" FontSize="10"/></StackPanel></StackPanel>
+   <Button x:Name="CaptureAction" Style="{StaticResource MenuAction}" Background="#2585EF" Tag="area" Click="OnAction"><DockPanel><TextBlock Text="Выделить область" Foreground="White"/><TextBlock x:Name="Shortcut" Foreground="#E2F0FF" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel></Button>
+   <Button Style="{StaticResource MenuAction}" Content="Весь экран" Tag="screen" Click="OnAction"/>
+   <Button Style="{StaticResource MenuAction}" Content="Открыть изображение…" Tag="open" Click="OnAction"/>
+   <Border Height="1" Background="#25FFFFFF" Margin="8,8"/>
+   <Button Style="{StaticResource MenuAction}" Content="Настройки" Tag="settings" Click="OnAction"/>
+   <Button Style="{StaticResource MenuAction}" Content="Проверить обновления" Tag="updates" Click="OnAction"/>
+   <Button Style="{StaticResource MenuAction}" Content="Сообщить об ошибке" Tag="help" Click="OnAction"/>
+   <Border Height="1" Background="#25FFFFFF" Margin="8,8"/>
+   <Button Style="{StaticResource MenuAction}" Content="Завершить B5MShot" Foreground="#FFBDC4" Tag="exit" Click="OnAction"/>
+  </StackPanel>
+ </Border>
+</Window>

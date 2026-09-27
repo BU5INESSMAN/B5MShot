@@ -182,10 +182,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
     const auto confirmation = MessageBoxW(
         nullptr,
-        L"B5MShot будет установлен для текущего компьютера.\n\n"
+        L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
         L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
         L"Продолжить установку?",
-        L"Установка B5MShot 0.6.0",
+        L"Установка B5MShot 0.8.0",
         MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
     if (confirmation != IDOK)
     {
@@ -199,8 +199,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 1;
     }
 
-    const auto temporaryDirectory = std::wstring(temporaryRoot) + L"B5MShot-Setup-" + std::to_wstring(GetCurrentProcessId());
-    if (!CreateDirectoryW(temporaryDirectory.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
+    const auto temporaryDirectory = std::wstring(temporaryRoot) + L"B5MShot-Setup-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    if (!CreateDirectoryW(temporaryDirectory.c_str(), nullptr))
     {
         MessageBoxW(nullptr, L"Не удалось подготовить файлы установки.", L"B5MShot", MB_ICONERROR);
         return 1;
@@ -270,10 +270,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const auto quotedPackage = QuotePowerShellLiteral(packagePath);
     const auto script =
         L"$ErrorActionPreference='Stop'; "
-        L"$previous=@(Get-Process -Name 'B5MShot' -ErrorAction SilentlyContinue | ForEach-Object {$_.Path} | Where-Object {$_}); "
-        L"Get-Process -Name 'B5MShot' -ErrorAction SilentlyContinue | Stop-Process -Force; "
-        L"try { Add-AppxPackage -Path " + quotedPackage + L" -ForceApplicationShutdown -ForceUpdateFromAnyVersion } "
-        L"catch { $previous | ForEach-Object {if(Test-Path -LiteralPath $_){Start-Process -FilePath $_}}; throw }; "
+        L"if(Get-Process -Name 'B5MShot' -ErrorAction SilentlyContinue){exit 1618}; "
+        L"Add-AppxPackage -Path " + quotedPackage + L"; "
         L"Remove-Item -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations\\image\\shell\\B5MShot.Upload' -Recurse -Force -ErrorAction SilentlyContinue; "
         L"$package=Get-AppxPackage -Name 'BU5INESSMAN.B5MShot' | Sort-Object Version -Descending | Select-Object -First 1; "
         L"if($null -eq $package){throw 'Package was not registered'}; "
@@ -296,7 +294,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         MessageBoxW(
             nullptr,
             (L"Установка не завершена. Код Windows: " + std::to_wstring(installationResult) +
-             L".\n\nИзменения сертификата отменены.").c_str(),
+             L".\n\nПри коде 1618 закройте B5MShot через трей, сохранив снимки, и повторите установку. Изменения сертификата отменены.").c_str(),
             L"B5MShot",
             MB_ICONERROR);
         return static_cast<int>(installationResult);
@@ -304,7 +302,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     MessageBoxW(
         nullptr,
-        L"B5MShot 0.6.0 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
+        L"B5MShot 0.8.0 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
         L"B5MShot",
         MB_ICONINFORMATION);
     return 0;
