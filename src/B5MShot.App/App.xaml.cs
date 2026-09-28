@@ -64,7 +64,12 @@ public partial class App : System.Windows.Application
         try
         {
             _settingsService.Load();
-            if (_settingsService.Current.StartWithWindows && _autoStartService.IsEnabled()) _autoStartService.SetEnabled(true);
+            // An OS setting failure must never prevent capture/hotkeys/tray from starting.
+            try
+            {
+                _autoStartService.RepairExistingRegistration();
+            }
+            catch (Exception exception) { ErrorLogService.Write(exception, "Repairing autostart registration"); }
             _uploadService = new UploadService();
             _shellIntegrationService.ConfigureForCurrentInstallation();
             MainAppWindow = new MainWindow(_settingsService, _autoStartService);

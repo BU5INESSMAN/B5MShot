@@ -11,8 +11,8 @@
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <AssemblyName>B5MShot</AssemblyName>
     <RootNamespace>B5MShot.App</RootNamespace>
-    <Version>0.8.1</Version>
-    <FileVersion>0.8.1.0</FileVersion>
+    <Version>0.8.2</Version>
+    <FileVersion>0.8.2.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\logo.png" />

@@ -20,6 +20,18 @@ internal static class Program
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         try
         {
+            const string family = "BU5INESSMAN.B5MShot_mdepjvqy5n31g";
+            var packageCommand = AutoStartService.BuildCommand(@"C:\Program Files\WindowsApps\old-version\B5MShot.exe",family,@"C:\Windows");
+            Check(packageCommand == "\"C:\\Windows\\explorer.exe\" \"shell:AppsFolder\\BU5INESSMAN.B5MShot_mdepjvqy5n31g!B5MShot\"", "Packaged startup uses stable activation identity");
+            Check(packageCommand == AutoStartService.BuildCommand(@"C:\Program Files\WindowsApps\new-version\B5MShot.exe",family,@"C:\Windows"), "App update does not change startup command");
+            Check(AutoStartService.BuildCommand(@"C:\My Shots\B5MShot.exe",null,@"C:\Windows")=="\"C:\\My Shots\\B5MShot.exe\"", "Portable startup still quotes executable paths with spaces");
+            var invalidFamily=false;
+            try { AutoStartService.BuildCommand("app.exe","invalid\" family",@"C:\Windows"); } catch(InvalidOperationException) { invalidFamily=true; }
+            Check(invalidFamily,"Startup rejects unexpected package identity");
+            Check(AutoStartService.CommandForRepair(packageCommand,null,@"C:\Windows") is null,"Running a portable copy cannot hijack installed startup");
+            Check(AutoStartService.CommandForRepair(null,family,@"C:\Windows") is null,"Startup repair never enables disabled autostart");
+            Check(AutoStartService.CommandForRepair("old.exe",family,@"C:\Windows")==packageCommand,"Installed startup repair replaces legacy path");
+            if(args.Contains("--autostart")) return 0;
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
@@ -174,7 +186,7 @@ internal static class Program
             settings.HideAnimatedAsync().GetAwaiter().GetResult();
             settings.Show(); Pump(100);
             Check(shell.Opacity == 1, "Settings reopens visibly with reduced motion");
-            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.1"), "Settings displays release version");
+            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.2"), "Settings displays release version");
             settings.Close();
             var tray = new TrayMenuWindow("Print Screen", _ => { }); tray.Show(); Pump(100);
             Check(!tray.ShowInTaskbar && tray.ActualWidth == 316, "Tray menu stays compact and off taskbar");

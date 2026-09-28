@@ -4,6 +4,7 @@
 #include <shellapi.h>
 #include <string>
 #include <vector>
+#include "AutoStartMigration.h"
 
 namespace
 {
@@ -185,7 +186,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
         L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
         L"Продолжить установку?",
-        L"Установка B5MShot 0.8.1",
+        L"Установка B5MShot 0.8.2",
         MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
     if (confirmation != IDOK)
     {
@@ -274,7 +275,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"Add-AppxPackage -Path " + quotedPackage + L"; "
         L"Remove-Item -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations\\image\\shell\\B5MShot.Upload' -Recurse -Force -ErrorAction SilentlyContinue; "
         L"$package=Get-AppxPackage -Name 'BU5INESSMAN.B5MShot' | Sort-Object Version -Descending | Select-Object -First 1; "
-        L"if($null -eq $package){throw 'Package was not registered'}; "
+        L"if($null -eq $package){throw 'Package was not registered'}; " + std::wstring(AutoStartMigrationScript) +
         L"Start-Process -FilePath (Join-Path $package.InstallLocation 'B5MShot.exe');";
 
     const auto installationResult = RunPowerShell(script);
@@ -302,7 +303,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     MessageBoxW(
         nullptr,
-        L"B5MShot 0.8.1 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
+        L"B5MShot 0.8.2 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
         L"B5MShot",
         MB_ICONINFORMATION);
     return 0;

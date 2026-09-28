@@ -39,20 +39,26 @@ jobs:
       - name: Build app, Explorer extension and signed installer
         shell: pwsh
         run: ./packaging/build-release.ps1 -CertificateThumbprint $env:SIGNING_THUMBPRINT
+      - name: Verify autostart migration without touching real startup entries
+        shell: pwsh
+        run: |
+          ./tests/autostart-migration.ps1
+          dotnet run --project tests/B5MShot.Smoke -c Release -- --autostart
+          if($LASTEXITCODE -ne 0){throw 'Autostart smoke checks failed'}
       - uses: actions/upload-artifact@v4
         with:
-          name: B5MShot-0.8.1
+          name: B5MShot-0.8.2
           path: |
-            release/stable-0.8.1/B5MShot.exe
-            release/stable-0.8.1/B5MShot-Setup.exe
-            release/stable-0.8.1/SHA256SUMS.txt
+            release/stable-0.8.2/B5MShot.exe
+            release/stable-0.8.2/B5MShot-Setup.exe
+            release/stable-0.8.2/SHA256SUMS.txt
       - name: Create draft release for verification
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          body_path: docs/release-0.8.1.md
+          body_path: docs/release-0.8.2.md
           files: |
-            release/stable-0.8.1/B5MShot.exe
-            release/stable-0.8.1/B5MShot-Setup.exe
-            release/stable-0.8.1/SHA256SUMS.txt
+            release/stable-0.8.2/B5MShot.exe
+            release/stable-0.8.2/B5MShot-Setup.exe
+            release/stable-0.8.2/SHA256SUMS.txt
