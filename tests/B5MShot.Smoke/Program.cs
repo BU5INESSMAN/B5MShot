@@ -186,7 +186,7 @@ internal static class Program
             settings.HideAnimatedAsync().GetAwaiter().GetResult();
             settings.Show(); Pump(100);
             Check(shell.Opacity == 1, "Settings reopens visibly with reduced motion");
-            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.2"), "Settings displays release version");
+            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.3"), "Settings displays release version");
             settings.Close();
             var tray = new TrayMenuWindow("Print Screen", _ => { }); tray.Show(); Pump(100);
             Check(!tray.ShowInTaskbar && tray.ActualWidth == 316, "Tray menu stays compact and off taskbar");

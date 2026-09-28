@@ -2,12 +2,23 @@
 #include <windows.h>
 #include <wincrypt.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <string>
 #include <vector>
 #include "AutoStartMigration.h"
+#include "InstallWorkflow.h"
 
 namespace
 {
+    int SetupMessage(HWND owner, const wchar_t* message, const wchar_t* title, UINT flags)
+    {
+#ifdef B5MSHOT_CI_TEST
+        OutputDebugStringW(message);
+        return IDOK; // Only the separate, unpublished CI executable bypasses modal dialogs.
+#else
+        return MessageBoxW(owner, message, title, flags);
+#endif
+    }
     constexpr int PackageResourceId = 201;
     constexpr int CertificateResourceId = 202;
 
@@ -128,7 +139,16 @@ namespace
         return encoded;
     }
 
-    DWORD RunPowerShell(const std::wstring& script)
+    std::wstring ReadSummary(const std::wstring& path)
+    {
+        std::vector<BYTE> bytes;
+        if (!ReadFileBytes(path, bytes) || bytes.size() < 2 || bytes.size() % 2 != 0) return {};
+        const auto* text = reinterpret_cast<const wchar_t*>(bytes.data());
+        const auto skip = text[0] == 0xFEFF ? 1 : 0;
+        return std::wstring(text + skip, bytes.size() / sizeof(wchar_t) - skip);
+    }
+
+    DWORD RunPowerShell(const std::wstring& script, const std::wstring& logPath)
     {
         wchar_t systemDirectory[MAX_PATH]{};
         if (GetSystemDirectoryW(systemDirectory, MAX_PATH) == 0)
@@ -142,22 +162,34 @@ namespace
         std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
         mutableCommand.push_back(L'\0');
 
+        SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
+        const auto log = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (log == INVALID_HANDLE_VALUE) return GetLastError();
+        const auto input = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING, 0, nullptr);
+        if (input == INVALID_HANDLE_VALUE) { const auto error = GetLastError(); CloseHandle(log); return error; }
+
         STARTUPINFOW startup{sizeof(startup)};
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = input;
+        startup.hStdOutput = startup.hStdError = log;
         PROCESS_INFORMATION process{};
         if (!CreateProcessW(
                 powershell.c_str(),
                 mutableCommand.data(),
                 nullptr,
                 nullptr,
-                FALSE,
+                TRUE,
                 CREATE_NO_WINDOW,
                 nullptr,
                 nullptr,
                 &startup,
                 &process))
         {
-            return GetLastError();
+            const auto error = GetLastError();
+            CloseHandle(input); CloseHandle(log);
+            return error;
         }
+        CloseHandle(input); CloseHandle(log);
 
         WaitForSingleObject(process.hProcess, INFINITE);
         DWORD exitCode = ERROR_INSTALL_FAILURE;
@@ -181,12 +213,12 @@ namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
-    const auto confirmation = MessageBoxW(
+    const auto confirmation = SetupMessage(
         nullptr,
         L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
         L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
         L"Продолжить установку?",
-        L"Установка B5MShot 0.8.2",
+        L"Установка B5MShot 0.8.3",
         MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
     if (confirmation != IDOK)
     {
@@ -196,26 +228,39 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     wchar_t temporaryRoot[MAX_PATH]{};
     if (GetTempPathW(MAX_PATH, temporaryRoot) == 0)
     {
-        MessageBoxW(nullptr, L"Не удалось открыть временную папку Windows.", L"B5MShot", MB_ICONERROR);
+        SetupMessage(nullptr, L"Не удалось открыть временную папку Windows.", L"B5MShot", MB_ICONERROR);
         return 1;
     }
 
     const auto temporaryDirectory = std::wstring(temporaryRoot) + L"B5MShot-Setup-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
     if (!CreateDirectoryW(temporaryDirectory.c_str(), nullptr))
     {
-        MessageBoxW(nullptr, L"Не удалось подготовить файлы установки.", L"B5MShot", MB_ICONERROR);
+        SetupMessage(nullptr, L"Не удалось подготовить файлы установки.", L"B5MShot", MB_ICONERROR);
         return 1;
     }
 
     const auto packagePath = temporaryDirectory + L"\\B5MShot.msix";
     const auto certificatePath = temporaryDirectory + L"\\B5MShot.cer";
+    wchar_t appData[MAX_PATH]{};
+    std::wstring logDirectory = temporaryRoot;
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, nullptr, 0, appData)))
+    {
+        const auto appDirectory = std::wstring(appData) + L"\\B5MShot";
+        CreateDirectoryW(appDirectory.c_str(), nullptr);
+        const auto logs = appDirectory + L"\\logs";
+        if (CreateDirectoryW(logs.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS) logDirectory = logs + L"\\";
+    }
+    const auto logBase = logDirectory + L"setup-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    const auto logPath = logBase + L".log";
+    const auto summaryPath = logBase + L".txt";
+    const auto installedMarker = logBase + L".state";
     if (!WriteEmbeddedResource(PackageResourceId, RT_RCDATA, packagePath) ||
         !WriteEmbeddedResource(CertificateResourceId, RT_RCDATA, certificatePath))
     {
         DeleteFileW(packagePath.c_str());
         DeleteFileW(certificatePath.c_str());
         RemoveDirectoryW(temporaryDirectory.c_str());
-        MessageBoxW(nullptr, L"Файлы установки повреждены. Скачайте установщик ещё раз.", L"B5MShot", MB_ICONERROR);
+        SetupMessage(nullptr, L"Файлы установки повреждены. Скачайте установщик ещё раз.", L"B5MShot", MB_ICONERROR);
         return 1;
     }
 
@@ -249,7 +294,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         DeleteFileW(packagePath.c_str());
         DeleteFileW(certificatePath.c_str());
         RemoveDirectoryW(temporaryDirectory.c_str());
-        MessageBoxW(nullptr, L"Не удалось открыть хранилище сертификатов Windows.", L"B5MShot", MB_ICONERROR);
+        SetupMessage(nullptr, L"Не удалось открыть хранилище сертификатов Windows.", L"B5MShot", MB_ICONERROR);
         return 1;
     }
 
@@ -262,24 +307,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             DeleteFileW(packagePath.c_str());
             DeleteFileW(certificatePath.c_str());
             RemoveDirectoryW(temporaryDirectory.c_str());
-            MessageBoxW(nullptr, L"Windows не разрешил добавить тестовый сертификат B5MShot.", L"B5MShot", MB_ICONERROR);
+            SetupMessage(nullptr, L"Windows не разрешил добавить тестовый сертификат B5MShot.", L"B5MShot", MB_ICONERROR);
             return 1;
         }
         certificateAdded = true;
     }
 
-    const auto quotedPackage = QuotePowerShellLiteral(packagePath);
     const auto script =
-        L"$ErrorActionPreference='Stop'; "
-        L"if(Get-Process -Name 'B5MShot' -ErrorAction SilentlyContinue){exit 1618}; "
-        L"Add-AppxPackage -Path " + quotedPackage + L"; "
-        L"Remove-Item -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations\\image\\shell\\B5MShot.Upload' -Recurse -Force -ErrorAction SilentlyContinue; "
-        L"$package=Get-AppxPackage -Name 'BU5INESSMAN.B5MShot' | Sort-Object Version -Descending | Select-Object -First 1; "
-        L"if($null -eq $package){throw 'Package was not registered'}; " + std::wstring(AutoStartMigrationScript) +
-        L"Start-Process -FilePath (Join-Path $package.InstallLocation 'B5MShot.exe');";
+        std::wstring(L"$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; ") +
+        InstallWorkflowScript +
+        L"\n$migrate={param($package)\n" + AutoStartMigrationScript + L"\n};\n" +
+        L"$result=Invoke-B5MShotInstall -PackagePath " + QuotePowerShellLiteral(packagePath) + L" -ExpectedVersion '0.8.3.0' -Migrate $migrate; " +
+        L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(installedMarker) + L",$result.Installed.ToString(),[Text.Encoding]::Unicode); " +
+        L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(summaryPath) + L",$result.Message,[Text.Encoding]::Unicode); " +
+        L"exit $result.Code;";
 
-    const auto installationResult = RunPowerShell(script);
-    if (installationResult != 0 && certificateAdded)
+    const auto installationResult = RunPowerShell(script, logPath);
+    // Never remove trust after successful/deferred deployment, or when its state is unknown.
+    if (installationResult != 0 && certificateAdded && ReadSummary(installedMarker) == L"False")
     {
         RemoveCertificate(store, certificate);
     }
@@ -290,21 +335,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     DeleteFileW(certificatePath.c_str());
     RemoveDirectoryW(temporaryDirectory.c_str());
 
-    if (installationResult != 0)
+    auto summary = ReadSummary(summaryPath);
+    if (installationResult != 0 && installationResult != 3010)
     {
-        MessageBoxW(
+        SetupMessage(
             nullptr,
-            (L"Установка не завершена. Код Windows: " + std::to_wstring(installationResult) +
-             L".\n\nПри коде 1618 закройте B5MShot через трей, сохранив снимки, и повторите установку. Изменения сертификата отменены.").c_str(),
+            ((summary.empty() ? L"Не удалось выполнить сценарий установки. Код: " + std::to_wstring(installationResult) : summary) +
+             L"\n\nПодробный журнал:\n" + logPath).c_str(),
             L"B5MShot",
             MB_ICONERROR);
         return static_cast<int>(installationResult);
     }
 
-    MessageBoxW(
+    SetupMessage(
         nullptr,
-        L"B5MShot 0.8.2 установлен.\n\nКоманда «Редактировать в B5MShot» появится в основном контекстном меню Windows 11. Если Проводник был открыт во время установки, обновите окно или откройте его заново.",
+        ((summary.empty() ? L"Установка завершена." : summary) + L"\n\nЖурнал:\n" + logPath).c_str(),
         L"B5MShot",
         MB_ICONINFORMATION);
-    return 0;
+    return static_cast<int>(installationResult);
 }

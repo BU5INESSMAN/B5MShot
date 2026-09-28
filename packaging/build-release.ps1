@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$CertificateThumbprint)
 $ErrorActionPreference='Stop'
 $repoRoot=Split-Path $PSScriptRoot -Parent
-$output=Join-Path $repoRoot 'release/stable-0.8.2'
+$output=Join-Path $repoRoot 'release/stable-0.8.3'
 $package=Join-Path $output 'package'
 $payload=Join-Path $repoRoot 'src/B5MShot.Setup/payload'
 New-Item -ItemType Directory -Force -Path $output,$package,$payload | Out-Null
@@ -39,6 +39,10 @@ try {
   & rc /nologo /c65001 "/fo$output/Setup.res" Setup.rc; Check-Native
   & cl /nologo /utf-8 /std:c++17 /EHsc /MT /O2 /DUNICODE /D_UNICODE Setup.cpp "$output/Setup.res" "/Fo$output/Setup.obj" /link "/OUT:$output/B5MShot-Setup.exe" /SUBSYSTEM:WINDOWS /MANIFEST:NO crypt32.lib shell32.lib user32.lib
   Check-Native
+  if($env:GITHUB_ACTIONS -eq 'true'){
+   & cl /nologo /utf-8 /std:c++17 /EHsc /MT /O2 /DUNICODE /D_UNICODE /DB5MSHOT_CI_TEST Setup.cpp "$output/Setup.res" "/Fo$output/Setup-Test.obj" /link "/OUT:$output/B5MShot-Setup-Test.exe" /SUBSYSTEM:WINDOWS /MANIFEST:NO crypt32.lib shell32.lib user32.lib
+   Check-Native
+  }
  } finally {Pop-Location}
  & $signtool sign /fd SHA256 /sha1 $CertificateThumbprint "$output/B5MShot-Setup.exe"; Check-Native
  Copy-Item "$package/B5MShot.exe" $output
