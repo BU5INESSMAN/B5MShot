@@ -11,10 +11,11 @@
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <AssemblyName>B5MShot</AssemblyName>
     <RootNamespace>B5MShot.App</RootNamespace>
-    <Version>0.8.3</Version>
-    <FileVersion>0.8.3.0</FileVersion>
+    <Version>0.8.4</Version>
+    <FileVersion>0.8.4.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/UpdateHandoff.cs" Link="Infrastructure/UpdateHandoff.cs" />
     <Resource Include="Assets\logo.png" />
   </ItemGroup>
 </Project>

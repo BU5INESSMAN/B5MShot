@@ -44,7 +44,9 @@ public partial class UpdateWindow : Window
                 return;
             }
             Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
-            ((App)System.Windows.Application.Current).ExitApplication();
+            // Setup asks the running app to exit only after the user confirms installation.
+            // Cancelling UAC/setup leaves the tray and hotkeys working.
+            Close();
         }
         catch(OperationCanceledException) { if(IsVisible && !_download.IsCancellationRequested) ReleaseNotesText.Text="Загрузка заняла слишком много времени. Проверьте соединение и повторите попытку."; }
         catch (Exception exception)

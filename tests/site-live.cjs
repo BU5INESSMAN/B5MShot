@@ -23,12 +23,12 @@ const fs = require('node:fs');
   await page.locator('#playDemo').click();
   const request=page.context().request;
   if(await page.locator('.hero-actions .primary').getAttribute('href')!=='/download/B5MShot-Setup.exe')throw Error('Primary download is not installer');
-  if(!(await page.locator('.release-note').textContent()).includes('0.8.3'))throw Error('Wrong landing release');
+  if(!(await page.locator('.release-note').textContent()).includes('0.8.4'))throw Error('Wrong landing release');
   for(const path of ['/download/B5MShot.exe','/download/B5MShot-Setup.exe','/assets/viewer.css']){
    const response=await request.head('https://s.bu5inessman.ru'+path);
    if(response.status()!==200)throw Error('Broken link '+path);
   }
   if(errors.length)throw Error(errors.join('\n'));
-  console.log('PASS live 0.8.3: assets, fonts, demo play/stop, installer + portable downloads, no browser errors');
+  console.log('PASS live 0.8.4: assets, fonts, demo play/stop, installer + portable downloads, no browser errors');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

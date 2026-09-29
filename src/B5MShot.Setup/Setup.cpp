@@ -218,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
         L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
         L"Продолжить установку?",
-        L"Установка B5MShot 0.8.3",
+        L"Установка B5MShot 0.8.4",
         MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
     if (confirmation != IDOK)
     {
@@ -241,6 +241,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     const auto packagePath = temporaryDirectory + L"\\B5MShot.msix";
     const auto certificatePath = temporaryDirectory + L"\\B5MShot.cer";
+    const auto handoffPath = temporaryDirectory + L"\\UpdateHandoff.cs";
     wchar_t appData[MAX_PATH]{};
     std::wstring logDirectory = temporaryRoot;
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, nullptr, 0, appData)))
@@ -255,8 +256,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const auto summaryPath = logBase + L".txt";
     const auto installedMarker = logBase + L".state";
     if (!WriteEmbeddedResource(PackageResourceId, RT_RCDATA, packagePath) ||
-        !WriteEmbeddedResource(CertificateResourceId, RT_RCDATA, certificatePath))
+        !WriteEmbeddedResource(CertificateResourceId, RT_RCDATA, certificatePath) ||
+        !WriteEmbeddedResource(203, RT_RCDATA, handoffPath))
     {
+        DeleteFileW(handoffPath.c_str());
         DeleteFileW(packagePath.c_str());
         DeleteFileW(certificatePath.c_str());
         RemoveDirectoryW(temporaryDirectory.c_str());
@@ -289,6 +292,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     if (store == nullptr || certificate == nullptr)
     {
+        DeleteFileW(handoffPath.c_str());
         if (certificate != nullptr) CertFreeCertificateContext(certificate);
         if (store != nullptr) CertCloseStore(store, 0);
         DeleteFileW(packagePath.c_str());
@@ -302,6 +306,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     {
         if (!CertAddCertificateContextToStore(store, certificate, CERT_STORE_ADD_REPLACE_EXISTING, nullptr))
         {
+            DeleteFileW(handoffPath.c_str());
             CertFreeCertificateContext(certificate);
             CertCloseStore(store, 0);
             DeleteFileW(packagePath.c_str());
@@ -315,14 +320,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     const auto script =
         std::wstring(L"$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; ") +
+        L"Add-Type -Path " + QuotePowerShellLiteral(handoffPath) + L"; " +
         InstallWorkflowScript +
         L"\n$migrate={param($package)\n" + AutoStartMigrationScript + L"\n};\n" +
-        L"$result=Invoke-B5MShotInstall -PackagePath " + QuotePowerShellLiteral(packagePath) + L" -ExpectedVersion '0.8.3.0' -Migrate $migrate; " +
+        L"$result=Invoke-B5MShotInstall -PackagePath " + QuotePowerShellLiteral(packagePath) + L" -ExpectedVersion '0.8.4.0' -Migrate $migrate; " +
         L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(installedMarker) + L",$result.Installed.ToString(),[Text.Encoding]::Unicode); " +
         L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(summaryPath) + L",$result.Message,[Text.Encoding]::Unicode); " +
         L"exit $result.Code;";
 
     const auto installationResult = RunPowerShell(script, logPath);
+    DeleteFileW(handoffPath.c_str());
     // Never remove trust after successful/deferred deployment, or when its state is unknown.
     if (installationResult != 0 && certificateAdded && ReadSummary(installedMarker) == L"False")
     {

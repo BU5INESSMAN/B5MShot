@@ -3,18 +3,22 @@
 // The same function is exercised with mocks locally and with real Appx deployment on CI.
 inline constexpr wchar_t InstallWorkflowScript[] = LR"ps(
 function Invoke-B5MShotInstall {
-    param([string]$PackagePath,[version]$ExpectedVersion,[scriptblock]$Migrate)
+    param([string]$PackagePath,[version]$ExpectedVersion,[scriptblock]$Migrate,
+        [scriptblock]$Prepare={param($processId,$version) [B5MShot.Update.UpdateHandoff]::Prepare($processId,$version,$true)})
     $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $deployed=$false
     $stage='Проверка запущенного приложения'
     try {
-        # Give the updater time to exit normally. Never kill an editor or Explorer.
+        # Coordinate a normal exit; legacy idle builds leave their WPF message loop.
+        # Never use ForceApplicationShutdown, Stop-Process or terminate Explorer.
         $running=@(Get-Process -Name B5MShot -ErrorAction SilentlyContinue)
-        for($attempt=0; $running.Count -gt 0 -and $attempt -lt 20; $attempt++) {
-            Start-Sleep -Milliseconds 200
-            $running=@(Get-Process -Name B5MShot -ErrorAction SilentlyContinue)
-        }
-        if($running.Count -gt 0) {
-            return [pscustomobject]@{Code=1618;Installed=$false;Message=('B5MShot работает в фоне (PID: '+(($running | ForEach-Object {$_.Id}) -join ', ')+'). Сохраните снимки и завершите программу через значок в трее.')}
+        foreach($process in $running) {
+            $state=& $Prepare $process.Id $ExpectedVersion
+            Write-Host ('Update handoff PID '+$process.Id+': '+$state)
+            if($state -in @('OtherSession','OtherUser','Current','Exited')){continue}
+            if($state -eq 'Busy') {
+                return [pscustomobject]@{Code=1618;Installed=$false;Message='В B5MShot открыт редактор или диалог. Сохраните снимок и закройте это окно, затем повторите установку. Выходить из трея не нужно.'}
+            }
+            throw ('Не удалось безопасно завершить предыдущую версию B5MShot: '+$state+' (PID '+$process.Id+'). Приложение не закрывалось принудительно.')
         }
         $stage='Установка пакета Windows'; Write-Host $stage
         $current=Get-AppxPackage -Name BU5INESSMAN.B5MShot -ErrorAction Stop | Sort-Object {[version]$_.Version} -Descending | Select-Object -First 1

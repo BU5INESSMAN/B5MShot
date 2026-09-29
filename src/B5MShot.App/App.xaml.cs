@@ -25,7 +25,9 @@ public partial class App : System.Windows.Application
     private TrayMenuWindow? _trayMenu;
     private Icon? _trayAppIcon;
     private Mutex? _singleInstanceMutex;
+    private UpdateHandoffService? _updateHandoff;
     private bool _captureActive;
+    private bool _choosingImage;
     private bool _checkingForUpdates;
     private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
     private Version? _notifiedUpdate;
@@ -42,6 +44,8 @@ public partial class App : System.Windows.Application
         var uploadPath = GetUploadPath(e.Args);
 
         _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\B5MShot.SingleInstance", out var isFirstInstance);
+        if (!isFirstInstance && uploadPath is null)
+            isFirstInstance = UpdateHandoffService.ReplaceOlderInstance(_singleInstanceMutex);
         if (!isFirstInstance)
         {
             if (uploadPath is not null)
@@ -56,7 +60,8 @@ public partial class App : System.Windows.Application
                 return;
             }
 
-            System.Windows.MessageBox.Show("B5MShot уже запущен и находится в системном трее.", "B5MShot", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!e.Args.Contains("--autostart"))
+                System.Windows.MessageBox.Show("B5MShot уже работает. Если в предыдущей версии открыт редактор, сохраните снимок и повторите запуск.", "B5MShot", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
@@ -75,6 +80,7 @@ public partial class App : System.Windows.Application
             MainAppWindow = new MainWindow(_settingsService, _autoStartService);
             MainWindow = MainAppWindow;
             _hotKeys.Initialize(MainAppWindow);
+            _updateHandoff = new UpdateHandoffService(this, MainAppWindow);
             ApplyHotKeys();
             CreateTrayIcon();
             _updateTimer.Tick += async (_,_) => await CheckForUpdatesAsync(userInitiated:false);
@@ -169,6 +175,7 @@ public partial class App : System.Windows.Application
 
     public async Task ChooseAndUploadImageAsync()
     {
+        if (IsShuttingDown) return;
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Выберите изображение для редактирования в B5MShot",
@@ -177,7 +184,11 @@ public partial class App : System.Windows.Application
             Multiselect = false
         };
 
-        if (dialog.ShowDialog() == true)
+        bool chosen;
+        _choosingImage = true;
+        try { chosen = dialog.ShowDialog() == true; }
+        finally { _choosingImage = false; }
+        if (chosen)
         {
             await OpenImageFileInEditorAsync(dialog.FileName);
         }
@@ -185,7 +196,7 @@ public partial class App : System.Windows.Application
 
     private void StartCapture(bool fullscreen)
     {
-        if (_captureActive)
+        if (_captureActive || IsShuttingDown)
         {
             return;
         }
@@ -280,6 +291,14 @@ public partial class App : System.Windows.Application
         Shutdown();
     }
 
+    public bool ReserveUpdateShutdown()
+    {
+        if (HasActiveEditor || _choosingImage) return false;
+        IsShuttingDown = true;
+        _hotKeys.Clear();
+        return true;
+    }
+
     private void TryRegisterHotKey(int slot, HotKeyGesture gesture, Action action, ICollection<string> errors)
     {
         try
@@ -341,6 +360,7 @@ public partial class App : System.Windows.Application
 
     private async Task OpenImageFileInEditorAsync(string filePath)
     {
+        if (IsShuttingDown) return;
         try
         {
             if (!File.Exists(filePath))
@@ -440,6 +460,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _updateHandoff?.Dispose();
         _updateTimer.Stop();
         _trayIcon?.Dispose();
         _trayAppIcon?.Dispose();

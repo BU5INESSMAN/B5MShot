@@ -4,13 +4,13 @@ $body=[regex]::Match($header,'(?s)LR"ps\((.*?)\)ps";').Groups[1].Value
 if(!$body){throw 'Missing installation workflow'}
 . ([scriptblock]::Create($body))
 $script:mode='';$script:added=$false;$script:deferred=$false;$script:launched=$false;$script:launchTarget=''
-function Get-Process { param($Name,$ErrorAction) if($script:mode -eq 'running'){[pscustomobject]@{Id=123}} }
+function Get-Process { param($Name,$ErrorAction) if($script:mode -in @('running','idle','hung','other-session')){[pscustomobject]@{Id=123}} }
 function Start-Sleep { param($Milliseconds) }
 function Get-AppxPackage {
     param($Name,$ErrorAction)
     if($script:mode -eq 'verify-fails' -and $script:added){return}
     if($script:mode -eq 'newer'){$version='0.9.0.0'}
-    elseif($script:added -and (!$script:deferred -or $script:mode -eq 'defer-completes')){$version='0.8.3.0'}
+    elseif($script:added -and (!$script:deferred -or $script:mode -eq 'defer-completes')){$version='0.8.4.0'}
     elseif($script:mode -in @('update','defer','defer-completes')){$version='0.8.1.0'}
     else{return}
     [pscustomobject]@{Version=$version;PackageFamilyName='BU5INESSMAN.B5MShot_mdepjvqy5n31g'}
@@ -28,12 +28,16 @@ function Start-Process {
     if($WindowStyle -ne 'Hidden'){throw 'Helper must be hidden'}
     $script:launched=$true; $script:launchTarget=$ArgumentList
 }
-foreach($case in @('clean','update','running','deploy-fails','migration-fails','launch-fails','defer','defer-completes','newer','verify-fails')) {
+foreach($case in @('clean','update','running','idle','hung','other-session','deploy-fails','migration-fails','launch-fails','defer','defer-completes','newer','verify-fails')) {
     $script:mode=$case;$script:added=$false;$script:deferred=$false;$script:launched=$false
-    $result=Invoke-B5MShotInstall -PackagePath 'fixture.msix' -ExpectedVersion '0.8.3.0' -Migrate {param($package) if($script:mode -eq 'migration-fails'){throw 'Access denied on startup migration'}}
+    $result=Invoke-B5MShotInstall -PackagePath 'fixture.msix' -ExpectedVersion '0.8.4.0' -Migrate {param($package) if($script:mode -eq 'migration-fails'){throw 'Access denied on startup migration'}} -Prepare {
+        param($processId,$version)
+        switch($script:mode) { running {'Busy'} idle {'Exited'} hung {'Unresponsive'} other-session {'OtherSession'} default {throw 'Unexpected process'} }
+    }
     if(@($result).Count -ne 1){throw "Workflow leaked pipeline objects: $case"}
     switch($case) {
         running { if($result.Code -ne 1618 -or $script:added -or $result.Installed){throw 'Running editor not protected'} }
+        hung { if($result.Code -ne 1603 -or $script:added){throw 'Unresponsive app was terminated'} }
         deploy-fails { if($result.Code -ne 1603 -or $result.Installed -or $result.Message -notmatch '0x80073CF6' -or $result.Message -match '1618'){throw 'Deployment error lost its real cause'} }
         migration-fails { if($result.Code -ne 0 -or !$result.Installed -or $result.Message.Length -lt 80){throw 'Migration warning turned successful install into failure'} }
         launch-fails { if($result.Code -ne 0 -or !$result.Installed -or $result.Message.Length -lt 80){throw 'App launch warning turned successful install into failure'} }
