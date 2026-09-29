@@ -2,7 +2,7 @@ param([string]$Fixture='tests/HandoffFixture/bin/Release/net8.0-windows/win-x64/
 $ErrorActionPreference='Stop'
 Add-Type -Path "$PSScriptRoot/../src/Shared/UpdateHandoff.cs"
 $path=(Resolve-Path -LiteralPath $Fixture).Path
-foreach($mode in @('idle','editor','protocol','busy','same-version','newer-version')) {
+foreach($mode in @('idle','editor','update-prompt','protocol','busy','same-version','newer-version')) {
     $process=Start-Process -FilePath $path -ArgumentList $mode -WindowStyle Hidden -PassThru
     try {
         Start-Sleep -Milliseconds 1000

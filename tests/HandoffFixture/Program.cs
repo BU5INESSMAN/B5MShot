@@ -19,6 +19,8 @@ internal static class Program
             var editor = new Window { Title = "Unsaved screenshot", Width = 100, Height = 100 };
             new WindowInteropHelper(editor).EnsureHandle(); // Hidden editor must also block.
         }
+        if (Array.IndexOf(args, "update-prompt") >= 0)
+            app.Dispatcher.BeginInvoke((Action)(() => new Window { Title = UpdateHandoff.UpdatePromptTitle, Width = 160, Height = 80 }.ShowDialog()));
         if (Array.IndexOf(args, "protocol") >= 0 || Array.IndexOf(args, "busy") >= 0)
         {
             HwndSource.FromHwnd(handle).AddHook((IntPtr hwnd, int message, IntPtr w, IntPtr l, ref bool handled) =>

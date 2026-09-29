@@ -16,6 +16,7 @@ namespace B5MShot.Update
         public const string MessageName = "B5MShot.PrepareForUpdate.v1";
         public const int Ready = 0xB501;
         public const int Busy = 0xB502;
+        public const string UpdatePromptTitle = "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 B5MShot";
 
         public static string DescribeWindows(int processId)
         {
@@ -63,10 +64,15 @@ namespace B5MShot.Update
                         if (installed < new Version(0, 6, 0, 0) || installed >= new Version(0, 8, 4, 0)) return "Unsupported";
                         windows = GetWindows(processId);
                         foreach (var window in windows)
-                            if (window.Handle != main.Handle &&
+                            if (window.Handle != main.Handle && !IsUpdatePrompt(window) &&
                                 (window.Visible || (window.Class.StartsWith("HwndWrapper[", StringComparison.Ordinal) &&
                                  window.Title.Length != 0 && window.Title != "MediaContextNotificationWindow" &&
                                  window.Title != "SystemResourceNotifyWindow" && window.Title != "Hidden Window"))) return "Busy";
+                        // An old version's update notification is not an unsaved screenshot.
+                        // Close its modal frame normally before asking the outer WPF loop to exit.
+                        foreach (var window in windows)
+                            if (IsUpdatePrompt(window) && SendMessageTimeout(window.Handle, 0x0010,
+                                IntPtr.Zero, IntPtr.Zero, 2, 2000, out response) == IntPtr.Zero) return "Unresponsive";
                         uint ownerId;
                         var thread = GetWindowThreadProcessId(main.Handle, out ownerId);
                         if (ownerId != processId || thread == 0) return "Starting";
@@ -87,6 +93,10 @@ namespace B5MShot.Update
             public string Title;
             public string Class;
             public bool Visible;
+        }
+        private static bool IsUpdatePrompt(WindowInfo window)
+        {
+            return window.Title == UpdatePromptTitle && window.Class.StartsWith("HwndWrapper[", StringComparison.Ordinal);
         }
         private static List<WindowInfo> GetWindows(int processId)
         {
