@@ -11,6 +11,8 @@ internal static class Program
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         var main = new Window { Title = "B5MShot" };
         var handle = new WindowInteropHelper(main).EnsureHandle();
+        foreach (var title in new[] { "Hidden Window", "SystemResourceNotifyWindow" })
+            new WindowInteropHelper(new Window { Title = title }).EnsureHandle();
         // Match the hidden real tray main window, without touching settings/hotkeys/startup.
         if (Array.IndexOf(args, "editor") >= 0)
         {

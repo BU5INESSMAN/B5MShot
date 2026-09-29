@@ -18,6 +18,7 @@ if($old.Version -ne '0.8.3.0'){throw 'Wrong upgrade baseline'}
 $oldProcess=Start-Process -FilePath (Join-Path $old.InstallLocation 'B5MShot.exe') -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 2
 if($oldProcess.HasExited){throw 'Old app was not running before update'}
+Write-Output ([B5MShot.Update.UpdateHandoff]::DescribeWindows($oldProcess.Id))
 $runKey='HKCU:/Software/Microsoft/Windows/CurrentVersion/Run'
 Set-ItemProperty $runKey -Name B5MShot -Value ('"'+(Resolve-Path 'release/previous/B5MShot.exe').Path+'"')
 $setup=Start-Process -FilePath (Resolve-Path 'release/stable-0.8.4/B5MShot-Setup-Test.exe') -WindowStyle Hidden -PassThru

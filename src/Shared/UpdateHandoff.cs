@@ -65,7 +65,8 @@ namespace B5MShot.Update
                         foreach (var window in windows)
                             if (window.Handle != main.Handle &&
                                 (window.Visible || (window.Class.StartsWith("HwndWrapper[", StringComparison.Ordinal) &&
-                                 window.Title.Length != 0 && window.Title != "MediaContextNotificationWindow"))) return "Busy";
+                                 window.Title.Length != 0 && window.Title != "MediaContextNotificationWindow" &&
+                                 window.Title != "SystemResourceNotifyWindow" && window.Title != "Hidden Window"))) return "Busy";
                         uint ownerId;
                         var thread = GetWindowThreadProcessId(main.Handle, out ownerId);
                         if (ownerId != processId || thread == 0) return "Starting";
