@@ -50,7 +50,13 @@ public static class MenuLockFixture {
     }
 }
 '@
-$otherHosts=@(Get-Process dllhost -ErrorAction SilentlyContinue | Where-Object { ![MenuLockFixture]::IsOurHost($_) } | Select-Object -ExpandProperty Id)
+# Use a controlled unrelated host: idle system COM hosts can exit naturally during deployment.
+$fixtureDirectory=Join-Path $PSScriptRoot 'HandoffFixture/bin/Release/net8.0-windows/win-x64/publish'
+$unrelatedPath=Join-Path $fixtureDirectory 'dllhost.exe'
+Copy-Item (Join-Path $fixtureDirectory 'B5MShot.exe') $unrelatedPath
+$unrelatedHost=Start-Process -FilePath $unrelatedPath -WindowStyle Hidden -PassThru
+Start-Sleep -Seconds 1
+if($unrelatedHost.HasExited){throw 'Unrelated host fixture failed to start'}
 $menu=[MenuLockFixture]::Create()
 Start-Sleep -Seconds 1
 $menuHosts=@(Get-Process dllhost -ErrorAction SilentlyContinue | Where-Object { [MenuLockFixture]::IsOurHost($_) })
@@ -63,7 +69,8 @@ if(!$setup.WaitForExit(180000) -or $setup.ExitCode -ne 0){throw 'Upgrade install
 if(!$oldProcess.HasExited){throw 'Old background process survived update'}
 $installed=Get-AppxPackage -Name BU5INESSMAN.B5MShot
 if($installed.Version -ne '0.8.7.0'){throw 'Installed version was not updated'}
-foreach($hostId in $otherHosts){if(!(Get-Process -Id $hostId -ErrorAction SilentlyContinue)){throw 'Unrelated COM host was closed'}}
+if($unrelatedHost.HasExited){throw 'Unrelated dllhost process was closed'}
+$unrelatedHost.Kill(); $unrelatedHost.WaitForExit(); $unrelatedHost.Dispose()
 [void][Runtime.InteropServices.Marshal]::Release($menu)
 Write-Output 'PASS: upgrade releases only the old B5MShot menu surrogate, retaining unrelated COM hosts.'
 $command=(Get-ItemProperty $runKey).B5MShot
