@@ -11,8 +11,8 @@
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <AssemblyName>B5MShot</AssemblyName>
     <RootNamespace>B5MShot.App</RootNamespace>
-    <Version>0.8.6</Version>
-    <FileVersion>0.8.6.0</FileVersion>
+    <Version>0.8.7</Version>
+    <FileVersion>0.8.7.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Shared/UpdateHandoff.cs" Link="Infrastructure/UpdateHandoff.cs" />

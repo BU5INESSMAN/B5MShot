@@ -4,7 +4,9 @@
 inline constexpr wchar_t InstallWorkflowScript[] = LR"ps(
 function Invoke-B5MShotInstall {
     param([string]$PackagePath,[version]$ExpectedVersion,[scriptblock]$Migrate,
-        [scriptblock]$Prepare={param($processId,$version) [B5MShot.Update.UpdateHandoff]::Prepare($processId,$version,$true)})
+        [scriptblock]$Prepare={param($processId,$version) [B5MShot.Update.UpdateHandoff]::Prepare($processId,$version,$true)},
+        [scriptblock]$ReleaseShellHosts={param($version) [B5MShot.Update.UpdateHandoff]::ReleaseShellHosts($version)},
+        [scriptblock]$Launch={param($family,$version) [B5MShot.Update.UpdateHandoff]::ActivatePackage($family,$version)})
     $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $deployed=$false
     $stage='Проверка запущенного приложения'
     try {
@@ -20,6 +22,9 @@ function Invoke-B5MShotInstall {
             }
             throw ('Не удалось безопасно завершить предыдущую версию B5MShot: '+$state+' (PID '+$process.Id+'). Приложение не закрывалось принудительно.')
         }
+        $stage='Освобождение компонента меню B5MShot'
+        $released=& $ReleaseShellHosts $ExpectedVersion
+        Write-Host ('Released B5MShot menu hosts: '+$released)
         $stage='Установка пакета Windows'; Write-Host $stage
         $current=Get-AppxPackage -Name BU5INESSMAN.B5MShot -ErrorAction Stop | Sort-Object {[version]$_.Version} -Descending | Select-Object -First 1
         if(!$current -or [version]$current.Version -lt $ExpectedVersion) {
@@ -46,12 +51,14 @@ function Invoke-B5MShotInstall {
         try {
             Remove-Item -LiteralPath 'Registry::HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\image\shell\B5MShot.Upload' -Recurse -Force -ErrorAction SilentlyContinue
         } catch { Write-Host $_; $warnings.Add('Старая команда Проводника не удалена.') }
+        $stage='Запуск обновлённого приложения'
         try {
-            # Shell activation avoids direct execution from a versioned WindowsApps directory.
+            # Activation returns the real PID; verify its version before reporting success.
             if($package.PackageFamilyName -notmatch '^BU5INESSMAN\.B5MShot_[a-zA-Z0-9]+$'){throw 'Неизвестный идентификатор пакета.'}
-            Start-Process -FilePath (Join-Path ([Environment]::GetFolderPath('Windows')) 'explorer.exe') -ArgumentList ('shell:AppsFolder\'+$package.PackageFamilyName+'!B5MShot') -WindowStyle Hidden -ErrorAction Stop
-        } catch { Write-Host ($_ | Format-List * -Force | Out-String); $warnings.Add('Автоматический запуск не выполнен. Откройте B5MShot через меню «Пуск».') }
-        return [pscustomobject]@{Code=0;Installed=$true;Message=('B5MShot '+$package.Version+' установлен.'+[Environment]::NewLine+($warnings -join [Environment]::NewLine))}
+            $started=& $Launch $package.PackageFamilyName $ExpectedVersion
+            Write-Host ('Started updated B5MShot PID '+$started)
+        } catch { throw }
+        return [pscustomobject]@{Code=0;Installed=$true;NeedsAttention=($warnings.Count -gt 0);Message=('B5MShot '+$package.Version+' установлен.'+[Environment]::NewLine+($warnings -join [Environment]::NewLine))}
     } catch {
         $details=($_ | Format-List * -Force | Out-String); Write-Host $details
         $hex=[regex]::Match($details,'(?i)0x[0-9a-f]{8}').Value

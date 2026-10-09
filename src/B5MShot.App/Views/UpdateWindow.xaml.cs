@@ -34,7 +34,6 @@ public partial class UpdateWindow : Window
             ReleaseNotesText.Text = "Сначала сохраните снимок и закройте редактор. После этого можно обновить приложение.";
             return;
         }
-        if(System.Windows.MessageBox.Show(this,"Скачать и установить обновление? Windows попросит подтвердить установку. Приложение перезапустится; настройки сохранятся.","Обновление B5MShot",MessageBoxButton.OKCancel,MessageBoxImage.Question)!=MessageBoxResult.OK) return;
         _downloading = true; InstallButton.IsEnabled = false; InstallButton.Content = "Подготовка…";
         try
         {
@@ -49,8 +48,7 @@ public partial class UpdateWindow : Window
                 return;
             }
             Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
-            // Setup asks the running app to exit only after the user confirms installation.
-            // Cancelling UAC/setup leaves the tray and hotkeys working.
+            // Cancelling Windows elevation leaves the tray and hotkeys working.
             Close();
         }
         catch(OperationCanceledException) { if(IsVisible && !_download.IsCancellationRequested) ReleaseNotesText.Text="Загрузка заняла слишком много времени. Проверьте соединение и повторите попытку."; }

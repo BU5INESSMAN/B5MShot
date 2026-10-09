@@ -11,7 +11,7 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap desktop desktop4 desktop5 desktop6 virtualization com rescap">
 
-  <Identity Name="BU5INESSMAN.B5MShot" Publisher="CN=BU5INESSMAN" Version="0.8.6.0" ProcessorArchitecture="x64" />
+  <Identity Name="BU5INESSMAN.B5MShot" Publisher="CN=BU5INESSMAN" Version="0.8.7.0" ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>B5MShot</DisplayName>

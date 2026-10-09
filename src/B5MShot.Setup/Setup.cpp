@@ -213,18 +213,6 @@ namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
-    const auto confirmation = SetupMessage(
-        nullptr,
-        L"B5MShot будет установлен для текущего пользователя. Перед установкой сохраните снимки и завершите старую версию через трей.\n\n"
-        L"Windows запросил права администратора, чтобы добавить тестовый сертификат B5MShot и современную команду Проводника.\n\n"
-        L"Продолжить установку?",
-        L"Установка B5MShot 0.8.6",
-        MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1);
-    if (confirmation != IDOK)
-    {
-        return 0;
-    }
-
     wchar_t temporaryRoot[MAX_PATH]{};
     if (GetTempPathW(MAX_PATH, temporaryRoot) == 0)
     {
@@ -255,6 +243,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const auto logPath = logBase + L".log";
     const auto summaryPath = logBase + L".txt";
     const auto installedMarker = logBase + L".state";
+    const auto attentionMarker = logBase + L".attention";
     if (!WriteEmbeddedResource(PackageResourceId, RT_RCDATA, packagePath) ||
         !WriteEmbeddedResource(CertificateResourceId, RT_RCDATA, certificatePath) ||
         !WriteEmbeddedResource(203, RT_RCDATA, handoffPath))
@@ -323,8 +312,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"Add-Type -Path " + QuotePowerShellLiteral(handoffPath) + L"; " +
         InstallWorkflowScript +
         L"\n$migrate={param($package)\n" + AutoStartMigrationScript + L"\n};\n" +
-        L"$result=Invoke-B5MShotInstall -PackagePath " + QuotePowerShellLiteral(packagePath) + L" -ExpectedVersion '0.8.6.0' -Migrate $migrate; " +
+        L"$result=Invoke-B5MShotInstall -PackagePath " + QuotePowerShellLiteral(packagePath) + L" -ExpectedVersion '0.8.7.0' -Migrate $migrate; " +
         L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(installedMarker) + L",$result.Installed.ToString(),[Text.Encoding]::Unicode); " +
+        L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(attentionMarker) + L",([bool]$result.NeedsAttention).ToString(),[Text.Encoding]::Unicode); " +
         L"[IO.File]::WriteAllText(" + QuotePowerShellLiteral(summaryPath) + L",$result.Message,[Text.Encoding]::Unicode); " +
         L"exit $result.Code;";
 
@@ -354,6 +344,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return static_cast<int>(installationResult);
     }
 
+    if (installationResult == 0 && ReadSummary(attentionMarker) != L"True") return 0;
     SetupMessage(
         nullptr,
         ((summary.empty() ? L"Установка завершена." : summary) + L"\n\nЖурнал:\n" + logPath).c_str(),

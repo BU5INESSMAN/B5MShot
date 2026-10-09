@@ -32,6 +32,11 @@ internal static class Program
             Check(AutoStartService.CommandForRepair(null,family,@"C:\Windows") is null,"Startup repair never enables disabled autostart");
             Check(AutoStartService.CommandForRepair("old.exe",family,@"C:\Windows")==packageCommand,"Installed startup repair replaces legacy path");
             CheckUpdateDownloads();
+            var shellHost = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "dllhost.exe");
+            Check(B5MShot.Update.UpdateHandoff.IsOurShellHost(shellHost, "BU5INESSMAN.B5MShot_0.8.4.0_x64__mdepjvqy5n31g", new Version(0, 8, 7, 0)), "Own old menu surrogate can release package locks");
+            Check(!B5MShot.Update.UpdateHandoff.IsOurShellHost(shellHost, "WinRAR.ShellExtension_1.0.0.2_x64__d9ma7nkbkv4rp", new Version(0, 8, 7, 0)), "Other applications' COM hosts are excluded");
+            Check(!B5MShot.Update.UpdateHandoff.IsOurShellHost(shellHost, "BU5INESSMAN.B5MShot_0.9.0.0_x64__mdepjvqy5n31g", new Version(0, 8, 7, 0)), "Newer menu hosts are protected from older installers");
+            Check(!B5MShot.Update.UpdateHandoff.IsOurShellHost("C:/fake/dllhost.exe", "BU5INESSMAN.B5MShot_0.8.4.0_x64__mdepjvqy5n31g", new Version(0, 8, 7, 0)), "Process names alone cannot authorize menu host release");
             if(args.Contains("--autostart")) return 0;
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
@@ -187,7 +192,7 @@ internal static class Program
             settings.HideAnimatedAsync().GetAwaiter().GetResult();
             settings.Show(); Pump(100);
             Check(shell.Opacity == 1, "Settings reopens visibly with reduced motion");
-            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.6"), "Settings displays release version");
+            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.7"), "Settings displays release version");
             settings.Close();
             var tray = new TrayMenuWindow("Print Screen", _ => { }); tray.Show(); Pump(100);
             Check(!tray.ShowInTaskbar && tray.ActualWidth == 316, "Tray menu stays compact and off taskbar");
@@ -284,7 +289,7 @@ internal static class Program
             Check(CacheMatches(), "Prepared installer cache requires matching SHA-256");
             System.IO.File.WriteAllBytes(fixture, new byte[] { 4, 3, 2, 1 });
             Check(!CacheMatches(), "Modified cached installer is rejected before reuse");
-            var update = new B5MShot.App.Models.UpdateInfo(new Version(0, 8, 6), "v0.8.6", "page", "installer", "notes", "checksums");
+            var update = new B5MShot.App.Models.UpdateInfo(new Version(0, 8, 6), "v0.8.7", "page", "installer", "notes", "checksums");
             var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var requests = 0;
             CancellationToken sharedToken = default;
