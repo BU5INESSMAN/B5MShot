@@ -41,8 +41,12 @@ public static class MenuLockFixture {
         uint length = 0;
         if (GetPackageFullName(process.Handle, ref length, null) != 122) return false;
         var name = new StringBuilder((int)length);
-        return GetPackageFullName(process.Handle, ref length, name) == 0 &&
-            name.ToString() == "BU5INESSMAN.B5MShot_0.8.6.0_x64__mdepjvqy5n31g";
+        if (GetPackageFullName(process.Handle, ref length, name) != 0) return false;
+        var parts = name.ToString().Split('_');
+        Version version;
+        return parts.Length == 5 && parts[0] == "BU5INESSMAN.B5MShot" &&
+            parts[3] == "" && parts[4] == "mdepjvqy5n31g" &&
+            Version.TryParse(parts[1], out version) && version <= new Version("0.8.7.0");
     }
 }
 '@
