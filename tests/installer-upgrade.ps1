@@ -3,32 +3,32 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted
 Add-Type -Path "$PSScriptRoot/../src/Shared/UpdateHandoff.cs"
 function Close-TestApp {
     foreach($item in Get-Process B5MShot -ErrorAction SilentlyContinue) {
-        $result=[B5MShot.Update.UpdateHandoff]::Prepare($item.Id,[version]'0.8.4.0',$true)
+        $result=[B5MShot.Update.UpdateHandoff]::Prepare($item.Id,[version]'0.8.5.0',$true)
         if($result -ne 'Exited'){throw "Cannot close idle test app: $result"}
     }
 }
 Start-Sleep -Seconds 3
 Close-TestApp
 $current=Get-AppxPackage -Name BU5INESSMAN.B5MShot
-if(!$current -or $current.Version -ne '0.8.4.0'){throw 'Expected clean-install test baseline'}
+if(!$current -or $current.Version -ne '0.8.5.0'){throw 'Expected clean-install test baseline'}
 Remove-AppxPackage -Package $current.PackageFullName
 & "$PSScriptRoot/installer-deployment.ps1" -Installer 'release/previous/B5MShot-Setup.exe'
 $old=Get-AppxPackage -Name BU5INESSMAN.B5MShot
-if($old.Version -ne '0.8.3.0'){throw 'Wrong upgrade baseline'}
+if($old.Version -ne '0.8.4.0'){throw 'Wrong upgrade baseline'}
 $oldProcess=Start-Process -FilePath (Join-Path $old.InstallLocation 'B5MShot.exe') -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 2
 if($oldProcess.HasExited){throw 'Old app was not running before update'}
 Write-Output ([B5MShot.Update.UpdateHandoff]::DescribeWindows($oldProcess.Id))
 $runKey='HKCU:/Software/Microsoft/Windows/CurrentVersion/Run'
 Set-ItemProperty $runKey -Name B5MShot -Value ('"'+(Resolve-Path 'release/previous/B5MShot.exe').Path+'"')
-$setup=Start-Process -FilePath (Resolve-Path 'release/stable-0.8.4/B5MShot-Setup-Test.exe') -WindowStyle Hidden -PassThru
+$setup=Start-Process -FilePath (Resolve-Path 'release/stable-0.8.5/B5MShot-Setup-Test.exe') -WindowStyle Hidden -PassThru
 if(!$setup.WaitForExit(180000) -or $setup.ExitCode -ne 0){throw 'Upgrade installer failed'}
 if(!$oldProcess.HasExited){throw 'Old background process survived update'}
 $installed=Get-AppxPackage -Name BU5INESSMAN.B5MShot
-if($installed.Version -ne '0.8.4.0'){throw 'Installed version was not updated'}
+if($installed.Version -ne '0.8.5.0'){throw 'Installed version was not updated'}
 $command=(Get-ItemProperty $runKey).B5MShot
 if($command -notmatch 'shell:AppsFolder\\BU5INESSMAN.B5MShot_[a-zA-Z0-9]+!B5MShot' -or $command -match 'previous') {throw 'Legacy startup path was not repaired'}
-Write-Output 'PASS: real 0.8.3 -> 0.8.4 MSIX upgrade with old background app; stable autostart migration.'
+Write-Output 'PASS: real 0.8.4 -> 0.8.5 MSIX upgrade with old background app; stable autostart migration.'
 Start-Sleep -Seconds 2
 Close-TestApp
 # Simulate boot ordering: a legacy portable copy wins the mutex before package startup.
@@ -45,7 +45,7 @@ Start-Process -FilePath "$env:WINDIR/explorer.exe" -ArgumentList ('shell:AppsFol
 Start-Sleep -Seconds 3
 $started=@(Get-Process B5MShot -ErrorAction SilentlyContinue)
 if($started.Count -ne 1 -or $started[0].Path -ne (Join-Path $installed.InstallLocation 'B5MShot.exe')){throw 'Startup activation resolved to the wrong copy'}
-Write-Output 'PASS: sign-in activation starts exactly one installed 0.8.4 process.'
+Write-Output 'PASS: sign-in activation starts exactly one installed 0.8.5 process.'
 Close-TestApp
 # Actual application's editor, not just a protocol mock, must veto shutdown.
 Add-Type -AssemblyName System.Drawing
@@ -55,7 +55,7 @@ try{$bitmap.Save($picture,[Drawing.Imaging.ImageFormat]::Png)}finally{$bitmap.Di
 $editor=Start-Process -FilePath (Join-Path $installed.InstallLocation 'B5MShot.exe') -ArgumentList ('--upload "'+$picture+'"') -WindowStyle Hidden -PassThru
 try {
     Start-Sleep -Seconds 3
-    $state=[B5MShot.Update.UpdateHandoff]::Prepare($editor.Id,[version]'0.8.4.0',$true)
+    $state=[B5MShot.Update.UpdateHandoff]::Prepare($editor.Id,[version]'0.8.5.0',$true)
     if($state -ne 'Busy' -or $editor.HasExited){throw "Real editor not protected: $state"}
     Write-Output 'PASS: real new app refuses update shutdown with an unsaved editor.'
 } finally {

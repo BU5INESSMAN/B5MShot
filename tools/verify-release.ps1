@@ -1,4 +1,4 @@
-param([string]$Directory='release/stable-0.8.4')
+param([string]$Directory='release/stable-0.8.5')
 $ErrorActionPreference='Stop'
 $Directory=(Resolve-Path -LiteralPath $Directory).Path
 $thumbprint='C5475B8C2639D3F402CDBCC2076105974C9CACA9'
@@ -8,7 +8,7 @@ foreach($line in Get-Content "$Directory/SHA256SUMS.txt"){
  if((Get-FileHash $path).Hash -ne $Matches[1]){throw 'Checksum mismatch'}
  $signature=Get-AuthenticodeSignature $path
  if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $thumbprint){throw 'Invalid signature'}
- if([Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion -ne '0.8.4.0' -and [Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion -ne '0.8.4'){throw 'Unexpected file version'}
+ if([Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion -ne '0.8.5.0' -and [Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion -ne '0.8.5'){throw 'Unexpected file version'}
  Write-Output "PASS hash, signature and version: $(Split-Path $path -Leaf)"
 }
 Add-Type @'
@@ -37,7 +37,7 @@ try {
  try {
   $reader=[IO.StreamReader]::new($archive.GetEntry('AppxManifest.xml').Open())
   try {$manifest=[xml]$reader.ReadToEnd()} finally {$reader.Dispose()}
-  if($manifest.Package.Identity.Version -ne '0.8.4.0' -or $manifest.Package.Identity.Publisher -ne 'CN=BU5INESSMAN'){throw 'Embedded package identity differs'}
+  if($manifest.Package.Identity.Version -ne '0.8.5.0' -or $manifest.Package.Identity.Publisher -ne 'CN=BU5INESSMAN'){throw 'Embedded package identity differs'}
   if($manifest.SelectSingleNode("//*[local-name()='ExcludedKey']").InnerText -ne 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run'){throw 'Missing installed autostart registry policy'}
   if(!$manifest.SelectSingleNode("//*[local-name()='Capability' and @Name='unvirtualizedResources']")){throw 'Missing registry access capability'}
   $embedded=$archive.GetEntry('B5MShot.exe').Open()

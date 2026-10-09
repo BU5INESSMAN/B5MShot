@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -67,9 +68,42 @@ public sealed class ResultHudWindow : Window
             _allowClose = true;
             if (IsVisible) Close();
         };
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        timer.Tick += (_, _) => { if (!IsMouseOver && !IsKeyboardFocusWithin) Close(); };
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        var lifetime = new Stopwatch();
+        uint? initialInput = null;
+        timer.Tick += (_, _) =>
+        {
+            var lastInput = GetLastInputTime();
+            if (lifetime.Elapsed < TimeSpan.FromSeconds(3) &&
+                !(initialInput.HasValue && lastInput.HasValue && lastInput != initialInput)) return;
+            timer.Stop();
+            Close();
+        };
+        ContentRendered += (_, _) =>
+        {
+            // Observe input across the desktop without taking focus or intercepting it.
+            initialInput = GetLastInputTime();
+            lifetime.Restart();
+            timer.Start();
+        };
+        Closing += (_, _) => timer.Stop();
         Closed += (_, _) => timer.Stop();
-        timer.Start();
     }
+
+    private static uint? GetLastInputTime()
+    {
+        var input = new LastInputInfo { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
+        return GetLastInputInfo(ref input) ? input.Time : null;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInputInfo
+    {
+        public uint Size;
+        public uint Time;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLastInputInfo(ref LastInputInfo input);
 }
