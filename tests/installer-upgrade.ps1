@@ -19,11 +19,38 @@ $oldProcess=Start-Process -FilePath (Join-Path $old.InstallLocation 'B5MShot.exe
 Start-Sleep -Seconds 2
 if($oldProcess.HasExited){throw 'Old app was not running before update'}
 # Hold the real Explorer menu COM object across the update, reproducing package-in-use failures.
-$otherHosts=@(Get-Process dllhost -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-$menuType=[Type]::GetTypeFromCLSID([Guid]'B541C9AE-75E1-4A38-87AC-091A6CEB7A55',$true)
-$menu=[Activator]::CreateInstance($menuType)
+Add-Type @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class MenuLockFixture {
+    [DllImport("ole32.dll", PreserveSig=true)]
+    static extern int CoCreateInstance(ref Guid clsid, IntPtr outer, uint context, ref Guid iid, out IntPtr instance);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
+    static extern int GetPackageFullName(IntPtr process, ref uint length, StringBuilder name);
+    public static IntPtr Create() {
+        var clsid = new Guid("B541C9AE-75E1-4A38-87AC-091A6CEB7A55");
+        var iid = new Guid("00000000-0000-0000-C000-000000000046");
+        IntPtr instance;
+        // Force the real surrogate; Activator may load the DLL into this test process.
+        Marshal.ThrowExceptionForHR(CoCreateInstance(ref clsid, IntPtr.Zero, 4, ref iid, out instance));
+        return instance;
+    }
+    public static bool IsOurHost(Process process) {
+        uint length = 0;
+        if (GetPackageFullName(process.Handle, ref length, null) != 122) return false;
+        var name = new StringBuilder((int)length);
+        return GetPackageFullName(process.Handle, ref length, name) == 0 &&
+            name.ToString() == "BU5INESSMAN.B5MShot_0.8.6.0_x64__mdepjvqy5n31g";
+    }
+}
+'@
+$otherHosts=@(Get-Process dllhost -ErrorAction SilentlyContinue | Where-Object { ![MenuLockFixture]::IsOurHost($_) } | Select-Object -ExpandProperty Id)
+$menu=[MenuLockFixture]::Create()
 Start-Sleep -Seconds 1
-if(@(Get-Process dllhost -ErrorAction SilentlyContinue).Count -le $otherHosts.Count){throw 'Real menu surrogate was not created'}
+$menuHosts=@(Get-Process dllhost -ErrorAction SilentlyContinue | Where-Object { [MenuLockFixture]::IsOurHost($_) })
+if($menuHosts.Count -eq 0){throw 'Real menu surrogate was not created'}
 Write-Output ([B5MShot.Update.UpdateHandoff]::DescribeWindows($oldProcess.Id))
 $runKey='HKCU:/Software/Microsoft/Windows/CurrentVersion/Run'
 Set-ItemProperty $runKey -Name B5MShot -Value ('"'+(Resolve-Path 'release/previous/B5MShot.exe').Path+'"')
@@ -33,7 +60,7 @@ if(!$oldProcess.HasExited){throw 'Old background process survived update'}
 $installed=Get-AppxPackage -Name BU5INESSMAN.B5MShot
 if($installed.Version -ne '0.8.7.0'){throw 'Installed version was not updated'}
 foreach($hostId in $otherHosts){if(!(Get-Process -Id $hostId -ErrorAction SilentlyContinue)){throw 'Unrelated COM host was closed'}}
-[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($menu)
+[void][Runtime.InteropServices.Marshal]::Release($menu)
 Write-Output 'PASS: upgrade releases only the old B5MShot menu surrogate, retaining unrelated COM hosts.'
 $command=(Get-ItemProperty $runKey).B5MShot
 if($command -notmatch 'shell:AppsFolder\\BU5INESSMAN.B5MShot_[a-zA-Z0-9]+!B5MShot' -or $command -match 'previous') {throw 'Legacy startup path was not repaired'}
