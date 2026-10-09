@@ -7,8 +7,8 @@
 203 RCDATA "../Shared/UpdateHandoff.cs"
 
 1 VERSIONINFO
- FILEVERSION 0,8,5,0
- PRODUCTVERSION 0,8,5,0
+ FILEVERSION 0,8,6,0
+ PRODUCTVERSION 0,8,6,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -18,11 +18,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "BU5INESSMAN"
             VALUE "FileDescription", "Установка B5MShot"
-            VALUE "FileVersion", "0.8.5"
+            VALUE "FileVersion", "0.8.6"
             VALUE "InternalName", "B5MShot-Setup.exe"
             VALUE "OriginalFilename", "B5MShot-Setup.exe"
             VALUE "ProductName", "B5MShot"
-            VALUE "ProductVersion", "0.8.5"
+            VALUE "ProductVersion", "0.8.6"
         END
     END
     BLOCK "VarFileInfo"

@@ -9,13 +9,15 @@ namespace B5MShot.App.Views;
 public partial class UpdateWindow : Window
 {
     private readonly UpdateInfo _update;
+    private readonly UpdateDownloadService? _downloads;
     private readonly CancellationTokenSource _download = new();
     private bool _downloading;
 
-    public UpdateWindow(Version currentVersion, UpdateInfo update)
+    public UpdateWindow(Version currentVersion, UpdateInfo update, UpdateDownloadService? downloads = null)
     {
         InitializeComponent();
         _update = update;
+        _downloads = downloads;
         Closed += (_,_) => _download.Cancel();
         CurrentVersionText.Text = currentVersion.ToString(3);
         NewVersionText.Text = update.VersionLabel;
@@ -33,10 +35,13 @@ public partial class UpdateWindow : Window
             return;
         }
         if(System.Windows.MessageBox.Show(this,"Скачать и установить обновление? Windows попросит подтвердить установку. Приложение перезапустится; настройки сохранятся.","Обновление B5MShot",MessageBoxButton.OKCancel,MessageBoxImage.Question)!=MessageBoxResult.OK) return;
-        _downloading = true; InstallButton.IsEnabled = false;
+        _downloading = true; InstallButton.IsEnabled = false; InstallButton.Content = "Подготовка…";
         try
         {
-            var installer=await UpdateInstaller.DownloadAsync(_update,new Progress<int>(value=>InstallButton.Content=$"Загрузка {value}%"),_download.Token);
+            var installer = _downloads is null
+                ? await UpdateInstaller.DownloadAsync(_update, new Progress<int>(value => InstallButton.Content = $"Загрузка {value}%"), _download.Token)
+                : await _downloads.GetInstallerAsync(_update, _download.Token);
+            await UpdateInstaller.VerifyAsync(_update, installer, _download.Token);
             _download.Token.ThrowIfCancellationRequested();
             if(System.Windows.Application.Current is App { HasActiveEditor: true })
             {
@@ -51,6 +56,7 @@ public partial class UpdateWindow : Window
         catch(OperationCanceledException) { if(IsVisible && !_download.IsCancellationRequested) ReleaseNotesText.Text="Загрузка заняла слишком много времени. Проверьте соединение и повторите попытку."; }
         catch (Exception exception)
         {
+            if (exception is System.IO.InvalidDataException) _downloads?.Invalidate(_update);
             ErrorLogService.Write(exception, "Installing update");
             if(IsVisible) ReleaseNotesText.Text="Не удалось завершить обновление или установка отменена. Проверьте интернет и повторите попытку.\n\n"+exception.Message;
         }

@@ -39,6 +39,11 @@ public static class UpdateInstaller
         var directory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"B5MShot","updates",update.Version.ToString());
         Directory.CreateDirectory(directory);
         var destination=Path.Combine(directory,"B5MShot-Setup.exe");
+        if (await HasExpectedChecksumAsync(destination, expected, token))
+        {
+            progress.Report(100);
+            return destination;
+        }
         var temporary=Path.Combine(directory,Guid.NewGuid().ToString("N")+".partial");
         try
         {
@@ -70,5 +75,31 @@ public static class UpdateInstaller
             return destination;
         }
         finally { if(File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    public static async Task VerifyAsync(UpdateInfo update, string installer, CancellationToken token)
+    {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        lifetime.CancelAfter(TimeSpan.FromMinutes(10));
+        token = lifetime.Token;
+        if (!IsReleaseAsset(update.ChecksumsUrl)) throw new InvalidDataException("Нет проверяемой контрольной суммы обновления.");
+        using var response = await Client.GetAsync(update.ChecksumsUrl, HttpCompletionOption.ResponseHeadersRead, token);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(token);
+        var bytes = new byte[65537];
+        var length = await stream.ReadAtLeastAsync(bytes, bytes.Length, false, token);
+        if (length > 65536) throw new InvalidDataException("Слишком большой файл контрольных сумм.");
+        var expected = ParseChecksum(System.Text.Encoding.UTF8.GetString(bytes, 0, length));
+        if (!await HasExpectedChecksumAsync(installer, expected, token))
+            throw new InvalidDataException("Контрольная сумма не совпала. Скачайте обновление повторно.");
+    }
+
+    private static async Task<bool> HasExpectedChecksumAsync(string path, string expected, CancellationToken token)
+    {
+        if (!File.Exists(path)) return false;
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true);
+        if (stream.Length is <= 0 or > MaximumBytes) return false;
+        var hash = await SHA256.HashDataAsync(stream, token);
+        return Convert.ToHexString(hash).Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 }

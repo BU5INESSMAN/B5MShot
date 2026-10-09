@@ -62,7 +62,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download v0.8.4 --repo $env:GITHUB_REPOSITORY --pattern 'B5MShot*.exe' --dir release/previous
+          gh release download v0.8.5 --repo $env:GITHUB_REPOSITORY --pattern 'B5MShot*.exe' --dir release/previous
           if($LASTEXITCODE -ne 0){throw 'Cannot download upgrade baseline'}
           ./tests/installer-upgrade.ps1
       - name: Preserve installer diagnostics
@@ -74,18 +74,18 @@ jobs:
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: B5MShot-0.8.5
+          name: B5MShot-0.8.6
           path: |
-            release/stable-0.8.5/B5MShot.exe
-            release/stable-0.8.5/B5MShot-Setup.exe
-            release/stable-0.8.5/SHA256SUMS.txt
+            release/stable-0.8.6/B5MShot.exe
+            release/stable-0.8.6/B5MShot-Setup.exe
+            release/stable-0.8.6/SHA256SUMS.txt
       - name: Create draft release for verification
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          body_path: docs/release-0.8.5.md
+          body_path: docs/release-0.8.6.md
           files: |
-            release/stable-0.8.5/B5MShot.exe
-            release/stable-0.8.5/B5MShot-Setup.exe
-            release/stable-0.8.5/SHA256SUMS.txt
+            release/stable-0.8.6/B5MShot.exe
+            release/stable-0.8.6/B5MShot-Setup.exe
+            release/stable-0.8.6/SHA256SUMS.txt

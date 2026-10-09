@@ -31,6 +31,7 @@ internal static class Program
             Check(AutoStartService.CommandForRepair(packageCommand,null,@"C:\Windows") is null,"Running a portable copy cannot hijack installed startup");
             Check(AutoStartService.CommandForRepair(null,family,@"C:\Windows") is null,"Startup repair never enables disabled autostart");
             Check(AutoStartService.CommandForRepair("old.exe",family,@"C:\Windows")==packageCommand,"Installed startup repair replaces legacy path");
+            CheckUpdateDownloads();
             if(args.Contains("--autostart")) return 0;
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
@@ -186,7 +187,7 @@ internal static class Program
             settings.HideAnimatedAsync().GetAwaiter().GetResult();
             settings.Show(); Pump(100);
             Check(shell.Opacity == 1, "Settings reopens visibly with reduced motion");
-            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.5"), "Settings displays release version");
+            Check(((TextBlock)settings.FindName("VersionText")).Text.Contains("0.8.6"), "Settings displays release version");
             settings.Close();
             var tray = new TrayMenuWindow("Print Screen", _ => { }); tray.Show(); Pump(100);
             Check(!tray.ShowInTaskbar && tray.ActualWidth == 316, "Tray menu stays compact and off taskbar");
@@ -270,6 +271,60 @@ internal static class Program
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
         finally { foreach (Window window in app.Windows.Cast<Window>().ToArray()) window.Close(); }
     }
+    private static void CheckUpdateDownloads()
+    {
+        var fixture = System.IO.Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[] { 1, 2, 3, 4 };
+            System.IO.File.WriteAllBytes(fixture, bytes);
+            var expectedHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+            var verifyCache = typeof(UpdateInstaller).GetMethod("HasExpectedChecksumAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+            bool CacheMatches() => ((Task<bool>)verifyCache.Invoke(null, new object[] { fixture, expectedHash, CancellationToken.None })!).GetAwaiter().GetResult();
+            Check(CacheMatches(), "Prepared installer cache requires matching SHA-256");
+            System.IO.File.WriteAllBytes(fixture, new byte[] { 4, 3, 2, 1 });
+            Check(!CacheMatches(), "Modified cached installer is rejected before reuse");
+            var update = new B5MShot.App.Models.UpdateInfo(new Version(0, 8, 6), "v0.8.6", "page", "installer", "notes", "checksums");
+            var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var requests = 0;
+            CancellationToken sharedToken = default;
+            using (var downloads = new UpdateDownloadService((_, token) => { requests++; sharedToken = token; return pending.Task; }))
+            {
+                var background = downloads.PrepareAsync(update);
+                using var windowLifetime = new CancellationTokenSource();
+                var windowWait = downloads.GetInstallerAsync(update, windowLifetime.Token);
+                var secondWait = downloads.GetInstallerAsync(update, CancellationToken.None);
+                Check(requests == 1, "Background and update windows share one download");
+                windowLifetime.Cancel();
+                try { windowWait.GetAwaiter().GetResult(); throw new Exception("Window wait was not canceled"); }
+                catch (OperationCanceledException) { }
+                Check(!sharedToken.IsCancellationRequested && !background.IsCompleted, "Closing an update window does not cancel the background download");
+                pending.SetResult(fixture);
+                Check(secondWait.GetAwaiter().GetResult() == fixture, "Another update window still receives the prepared installer");
+                Check(downloads.GetInstallerAsync(update, CancellationToken.None).GetAwaiter().GetResult() == fixture && requests == 1,
+                    "Reopening uses the prepared installer without another download");
+                downloads.Invalidate(update);
+                downloads.PrepareAsync(update).GetAwaiter().GetResult();
+                Check(requests == 2, "Invalid installer can be downloaded again");
+                var changed = update with { DownloadUrl = "replacement" };
+                downloads.PrepareAsync(changed).GetAwaiter().GetResult();
+                Check(requests == 3, "Changed release assets do not share stale downloads");
+                System.IO.File.Delete(fixture);
+                downloads.PrepareAsync(changed).GetAwaiter().GetResult();
+                Check(requests == 4, "Removed cached installer is downloaded again");
+            }
+            Check(sharedToken.IsCancellationRequested, "Application shutdown cancels background downloads");
+            var attempts = 0;
+            using var retry = new UpdateDownloadService((_, _) => ++attempts == 1
+                ? Task.FromException<string>(new System.IO.IOException("offline")) : Task.FromResult(fixture));
+            try { retry.GetInstallerAsync(update, CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (System.IO.IOException) { }
+            Check(retry.GetInstallerAsync(update, CancellationToken.None).GetAwaiter().GetResult() == fixture && attempts == 2,
+                "Failed background downloads can be retried");
+        }
+        finally { System.IO.File.Delete(fixture); }
+    }
+
     private static object? Call(object instance, string name, params object[] arguments) => instance.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(instance, arguments);
     private static void Pump(int milliseconds)
     {

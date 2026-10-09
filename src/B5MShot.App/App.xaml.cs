@@ -18,6 +18,7 @@ public partial class App : System.Windows.Application
     private readonly CaptureService _captureService = new();
     private readonly GlobalHotKey _hotKeys = new();
     private readonly UpdateService _updateService = new();
+    private readonly UpdateDownloadService _updateDownloads = new();
     private readonly AutoStartService _autoStartService = new();
     private readonly ShellIntegrationService _shellIntegrationService = new();
     private UploadService _uploadService = null!;
@@ -29,8 +30,10 @@ public partial class App : System.Windows.Application
     private bool _captureActive;
     private bool _choosingImage;
     private bool _checkingForUpdates;
-    private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
+    private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(1) };
     private Version? _notifiedUpdate;
+    private UpdateInfo? _availableUpdate;
+    private UpdateWindow? _updateWindow;
     public bool HasActiveEditor => _captureActive || Windows.OfType<PreviewWindow>().Any() || Windows.OfType<SelectionWindow>().Any();
 
     public bool IsShuttingDown { get; private set; }
@@ -126,7 +129,13 @@ public partial class App : System.Windows.Application
 
     public async Task CheckForUpdatesAsync(bool userInitiated)
     {
-        if (_checkingForUpdates || IsShuttingDown || (!userInitiated && HasActiveEditor))
+        if (IsShuttingDown) return;
+        if (userInitiated && _availableUpdate is not null)
+        {
+            ShowUpdateWindow(_availableUpdate);
+            return;
+        }
+        if (_checkingForUpdates)
         {
             return;
         }
@@ -144,14 +153,9 @@ public partial class App : System.Windows.Application
                 return;
             }
 
-            var window = new UpdateWindow(_updateService.CurrentVersion, update);
-            if(!userInitiated && _notifiedUpdate==update.Version) return;
-            _notifiedUpdate=update.Version;
-            if (MainAppWindow.IsVisible)
-            {
-                window.Owner = MainAppWindow;
-            }
-            window.ShowDialog();
+            _availableUpdate = update;
+            _ = PrepareUpdateAsync(update);
+            if (userInitiated) ShowUpdateWindow(update);
         }
         catch (Exception exception)
         {
@@ -165,6 +169,40 @@ public partial class App : System.Windows.Application
         {
             _checkingForUpdates = false;
         }
+    }
+
+    private async Task PrepareUpdateAsync(UpdateInfo update)
+    {
+        var ready = false;
+        try
+        {
+            await _updateDownloads.PrepareAsync(update);
+            ready = true;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception exception) { ErrorLogService.Write(exception, "Downloading update in background"); }
+        if (IsShuttingDown || _availableUpdate != update || _notifiedUpdate == update.Version) return;
+        _notifiedUpdate = update.Version;
+        if (_trayIcon is null) return;
+        _trayIcon.Text = $"B5MShot — доступна версия {update.Version.ToString(3)}";
+        if (_updateWindow is { IsVisible: true }) return;
+        _trayIcon.ShowBalloonTip(10000, $"B5MShot {update.VersionLabel}",
+            ready ? "Обновление скачано. Нажмите, чтобы установить, когда закончите редактирование."
+                  : "Доступно обновление. Нажмите, чтобы скачать и установить.", Forms.ToolTipIcon.Info);
+    }
+
+    private void ShowUpdateWindow(UpdateInfo update)
+    {
+        if (IsShuttingDown) return;
+        if (_updateWindow is { IsVisible: true })
+        {
+            _updateWindow.Activate();
+            return;
+        }
+        _updateWindow = new UpdateWindow(_updateService.CurrentVersion, update, _updateDownloads);
+        if (MainAppWindow.IsVisible) _updateWindow.Owner = MainAppWindow;
+        try { _updateWindow.ShowDialog(); }
+        finally { _updateWindow = null; }
     }
 
     public void BeginCapture() => BeginCaptureArea();
@@ -324,6 +362,10 @@ public partial class App : System.Windows.Application
             Icon = _trayAppIcon ?? SystemIcons.Application,
             Visible = true
         };
+        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.Invoke(() =>
+        {
+            if (_availableUpdate is not null) ShowUpdateWindow(_availableUpdate);
+        });
         _trayIcon.MouseClick += (_, eventArgs) =>
         {
             if (eventArgs.Button == Forms.MouseButtons.Left)
@@ -462,6 +504,7 @@ public partial class App : System.Windows.Application
     {
         _updateHandoff?.Dispose();
         _updateTimer.Stop();
+        _updateDownloads.Dispose();
         _trayIcon?.Dispose();
         _trayAppIcon?.Dispose();
         _hotKeys.Dispose();
